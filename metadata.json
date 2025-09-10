@@ -1,0 +1,5 @@
+{
+  "name": "AI Trading Strategy Analyzer",
+  "description": "An advanced trading strategy backtesting and optimization tool. Load stock data, configure technical indicators, run detailed backtests, and use AI to receive suggestions for improving your strategy's performance.",
+  "requestFramePermissions": []
+}

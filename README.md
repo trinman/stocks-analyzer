@@ -114,7 +114,7 @@ The live version of this application is hosted on Netlify:
 This project is licensed under the MIT License - see the LICENSE file for details.
 
 👨🏾‍💻 Author
-John Estrada - GitHub Profile
+John Estrada - [[GitHub Profile](https://analyzer.upfronttrading.com/))
 
 Version: 1.0
 

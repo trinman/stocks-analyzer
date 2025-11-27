@@ -6,6 +6,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>AI Trading Strategy Analyzer</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      // Apply theme from localStorage or system preference before page loads to prevent flash
+      if (localStorage.theme === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+        document.documentElement.classList.add('dark');
+      } else {
+        document.documentElement.classList.remove('dark');
+      }
+    </script>
     <style>
       /* Custom scrollbar for a more modern look */
       ::-webkit-scrollbar {
@@ -22,6 +30,15 @@
       ::-webkit-scrollbar-thumb:hover {
         background: #64748b;
       }
+      .dark::-webkit-scrollbar-track {
+        background: #1e293b;
+      }
+      .dark::-webkit-scrollbar-thumb {
+        background: #475569;
+      }
+      .dark::-webkit-scrollbar-thumb:hover {
+        background: #64748b;
+      }
     </style>
 <script type="importmap">
 {
@@ -36,9 +53,11 @@
   }
 }
 </script>
+<link rel="stylesheet" href="/index.css">
 </head>
-  <body class="bg-slate-100">
+  <body class="bg-slate-100 dark:bg-slate-900">
     <div id="root"></div>
     <script type="module" src="/src/index.tsx"></script>
-  </body>
+  <script type="module" src="/index.tsx"></script>
+</body>
 </html>

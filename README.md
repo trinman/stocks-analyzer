@@ -111,7 +111,7 @@ The live version of this application is hosted on Netlify:
 **Build Tool:** Vite
 
 📜 License
-UNLICENSED.
+MIT License.
 
 👨🏾‍💻 Author
 John Estrada - [[GitHub Profile](https://github.com/trinman)))

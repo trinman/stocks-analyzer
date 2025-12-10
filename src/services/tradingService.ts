@@ -44,8 +44,12 @@ const calcRSI = (close: number[], period = 14): (number | null)[] => {
       rsi.push(null);
       continue;
     }
-    const rs = l === 0 ? 1000 : g / l;
-    rsi.push(100 - (100 / (1 + rs)));
+    if (l === 0) {
+        rsi.push(100);
+    } else {
+        const rs = g / l;
+        rsi.push(100 - (100 / (1 + rs)));
+    }
   }
   while (rsi.length < close.length) rsi.push(null);
   return rsi;
@@ -176,9 +180,13 @@ const generateSignals = (data: StockData, ind: Indicators, p: StrategyParameters
         let totalBuy = isReversalBuy || isMomentumBuy;
         
         // --- Trend Filter and Signal Generation ---
-        // Apply trend filter to all potential buy signals
-        if (totalBuy && p.useTrendFilter && ind.sma_slow && ind.sma_slow[i] != null && price < ind.sma_slow[i]!) {
-            totalBuy = false; // Invalidate buy signals if below trend
+        // Apply trend filter strictly
+        if (totalBuy && p.useTrendFilter && ind.sma_slow) {
+            const trendValue = ind.sma_slow[i];
+            // If the trend indicator hasn't calculated yet (is null) or price is below it, invalidate the buy.
+            if (trendValue == null || price < trendValue) {
+                totalBuy = false;
+            }
         }
         
         if (totalBuy) {
@@ -207,6 +215,10 @@ export const runBacktest = (data: StockData, ind: Indicators, p: StrategyParamet
     let exposureBars = 0;
 
     for (let i = 1; i < N; i++) {
+        // Use ATR from previous bar to avoid lookahead bias.
+        // Fallback to previous Close if ATR is null.
+        const prevATR = atr[i - 1] ?? (c[i - 1] * 0.02);
+
         // Signal exit
         if (pos && sellIdx.has(i - 1)) {
             const exitPx = o[i] * (1 - slip);
@@ -217,7 +229,7 @@ export const runBacktest = (data: StockData, ind: Indicators, p: StrategyParamet
         
         // Take Profit
         if (pos && p.useTakeProfit) {
-            const takeProfitLvl = pos.entry + (p.takeProfitATR * (atr[i] ?? (c[i] * 0.02)));
+            const takeProfitLvl = pos.entry + (p.takeProfitATR * prevATR);
             if (h[i] >= takeProfitLvl) {
                 const px = Math.max(o[i], takeProfitLvl) * (1 - slip);
                 cash += pos.shares * px - p.commission;
@@ -228,7 +240,7 @@ export const runBacktest = (data: StockData, ind: Indicators, p: StrategyParamet
 
         // Stop loss
         if (pos) {
-            const stopLvl = pos.entry - (p.stopATR * (atr[i] ?? (c[i] * 0.02)));
+            const stopLvl = pos.entry - (p.stopATR * prevATR);
             if (l[i] <= stopLvl) {
                 const px = Math.min(o[i], stopLvl) * (1 - slip);
                 cash += pos.shares * px - p.commission;
@@ -239,7 +251,7 @@ export const runBacktest = (data: StockData, ind: Indicators, p: StrategyParamet
         // Signal entry
         if (!pos && buyIdx.has(i - 1)) {
             const px = o[i] * (1 + slip);
-            const stopDist = Math.max(0.01, p.stopATR * (atr[i] ?? (c[i] * 0.02)));
+            const stopDist = Math.max(0.01, p.stopATR * prevATR);
             const riskDollars = cash * (p.riskPct / 100);
             const shares = Math.floor(riskDollars / stopDist);
             if (shares > 0 && cash >= shares * px + p.commission) {
@@ -260,7 +272,8 @@ export const runBacktest = (data: StockData, ind: Indicators, p: StrategyParamet
 
     if (pos) {
         const px = c[N - 1] * (1 - slip);
-        cash += pos.shares * px;
+        cash += pos.shares * px - p.commission;
+        trades.push({ type: 'sell', date: dates[N - 1], price: px, shares: pos.shares, reason: 'Final Close' });
     }
     const finalEquity = cash;
 

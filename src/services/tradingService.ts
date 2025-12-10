@@ -214,8 +214,8 @@ export const runBacktest = (
   let pos: {
     shares: number;
     entry: number;
-    highestPrice: number;        // for trailing stop
-    trailingStopPrice: number;   // current active trailing level
+    highestPrice: number;        // NEW: for trailing stop
+    trailingStopPrice: number;   // NEW: current active trailing level
   } | null = null;
 
   const equity: number[] = [];
@@ -288,7 +288,7 @@ export const runBacktest = (
       continue;
     }
 
-    // 3. Fixed Take Profit
+    // 3. Fixed Take Profit (optional – you can now disable this)
     if (
       pos &&
       p.useTakeProfit &&
@@ -342,7 +342,7 @@ export const runBacktest = (
           trailingStopPrice:
             p.useTrailingStop && p.trailingStopActivation === 'immediate'
               ? entryPx - p.trailingATRMultiplier * atrToday
-              : entryPx - p.stopATR * atrToday, // initial trail starts at initial stop level for ratchet
+              : entryPx - p.stopATR * atrToday, // initial trail = original stop
         };
         trades.push({
           type: 'buy',

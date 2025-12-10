@@ -1,12 +1,12 @@
 import React, { useState, useCallback, useMemo, ReactNode, useRef, useEffect } from 'react';
-import { AppStep, BacktestResult, Benchmark, Indicators, OptimizationResult, StockData, StrategyParameters, Timeframe, Signal } from './src/types.ts';
-import { calculateAllIndicators, runBacktest, runOptimization } from './src/services/tradingService.ts';
-import { fetchDailyData, resampleOHLC } from './src/services/apiServices.ts';
-import { getInitialAnalysis, createChatSession, getAnalysisPrompt } from './src/services/geminiService.ts';
-import { BrainCircuitIcon, ChartLineIcon, CogsIcon, DownloadIcon, PlayIcon, SearchIcon, SendIcon, MoonIcon, SunIcon } from './src/components/Icons.tsx';
-import { PriceAndIndicatorCharts, HeatmapChart } from './src/components/Charts.tsx';
-import { parseRangeSpec } from './src/utils.ts';
-import { exportTradesCSV, exportSummaryCSV } from './src/services/exportService.ts';
+import { AppStep, BacktestResult, Benchmark, Indicators, OptimizationResult, StockData, StrategyParameters, Timeframe, Signal } from './types.ts';
+import { calculateAllIndicators, runBacktest, runOptimization } from './services/tradingService.ts';
+import { fetchDailyData, resampleOHLC } from './services/apiServices.ts';
+import { getInitialAnalysis, createChatSession, getAnalysisPrompt } from './services/geminiService.ts';
+import { BrainCircuitIcon, ChartLineIcon, CogsIcon, DownloadIcon, PlayIcon, SearchIcon, SendIcon, MoonIcon, SunIcon } from './components/Icons.tsx';
+import { PriceAndIndicatorCharts, HeatmapChart } from './components/Charts.tsx';
+import { parseRangeSpec } from './utils.ts';
+import { exportTradesCSV, exportSummaryCSV } from './services/exportService.ts';
 import { Chat } from '@google/genai';
 
 

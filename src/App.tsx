@@ -17,6 +17,7 @@ const defaultStrategyParams: StrategyParameters = {
     rsiPeriod: 14, rsiOverbought: 70, rsiOversold: 30,
     macdFast: 12, macdSlow: 26, macdSignal: 9,
     riskPct: 1, stopATR: 2, commission: 0.5, slipBps: 5,
+    useTrailingStop: false, trailingATRMultiplier: 3.0, trailingStopActivation: 'ratchet',
     useTrendFilter: true,
     trendFilterPeriod: 200,
     useTakeProfit: true,
@@ -563,6 +564,26 @@ function App() {
                                <label className="block mt-2 text-sm text-slate-600 dark:text-slate-400">Stop Loss (ATR×): <input className="w-full p-1 border rounded dark:bg-slate-800 dark:border-slate-600 dark:text-slate-200" type="number" step="0.1" value={strategyParams.stopATR} onChange={e => setStrategyParams(p => ({...p, stopATR: +e.target.value}))} /></label>
                                <label className="block mt-2 text-sm text-slate-600 dark:text-slate-400">Slippage (bps): <input className="w-full p-1 border rounded dark:bg-slate-800 dark:border-slate-600 dark:text-slate-200" type="number" value={strategyParams.slipBps} onChange={e => setStrategyParams(p => ({...p, slipBps: +e.target.value}))} /></label>
                                <label className="block mt-2 text-sm text-slate-600 dark:text-slate-400">Commission ($): <input className="w-full p-1 border rounded dark:bg-slate-800 dark:border-slate-600 dark:text-slate-200" type="number" step="0.1" value={strategyParams.commission} onChange={e => setStrategyParams(p => ({...p, commission: +e.target.value}))} /></label>
+                               
+                               <div className="mt-3 pt-3 border-t dark:border-slate-600">
+                                   <label className="flex items-center gap-2 text-slate-700 dark:text-slate-300">
+                                       <input type="checkbox" checked={strategyParams.useTrailingStop} onChange={e => setStrategyParams(p => ({...p, useTrailingStop: e.target.checked}))} className="dark:bg-slate-900 dark:border-slate-600" /> 
+                                       Use Trailing Stop
+                                   </label>
+                                   {strategyParams.useTrailingStop && (
+                                       <div className="pl-4 mt-2 space-y-2">
+                                           <label className="block text-sm text-slate-600 dark:text-slate-400">Trail Multiplier (ATR×):
+                                               <input className="w-full p-1 border rounded dark:bg-slate-800 dark:border-slate-600 dark:text-slate-200" type="number" step="0.1" value={strategyParams.trailingATRMultiplier} onChange={e => setStrategyParams(p => ({...p, trailingATRMultiplier: +e.target.value}))} />
+                                           </label>
+                                           <label className="block text-sm text-slate-600 dark:text-slate-400">Activation Mode:
+                                               <select className="w-full p-1 border rounded dark:bg-slate-800 dark:border-slate-600 dark:text-slate-200" value={strategyParams.trailingStopActivation || 'ratchet'} onChange={e => setStrategyParams(p => ({...p, trailingStopActivation: e.target.value as 'ratchet' | 'immediate'}))}>
+                                                   <option value="ratchet">Ratchet (New Highs Only)</option>
+                                                   <option value="immediate">Immediate</option>
+                                               </select>
+                                           </label>
+                                       </div>
+                                   )}
+                               </div>
                            </div>
                             <div className="bg-slate-50 dark:bg-slate-700/50 p-4 rounded-lg border dark:border-slate-700">
                                <h3 className="font-bold mb-2 text-slate-600 dark:text-slate-300">Filters & Exits</h3>
@@ -674,6 +695,7 @@ function App() {
                                         <optgroup label="Risk">
                                             <option value="stop_loss_atr">Stop-Loss ATR</option>
                                             <option value="risk_per_trade">Risk Per Trade</option>
+                                            <option value="trailing_atr_multiplier">Trailing Stop Multiplier</option>
                                         </optgroup>
                                     </select>
                                     <input type="text" value={optimizationParams.range1} onChange={e => setOptimizationParams(p => ({...p, range1: e.target.value}))} placeholder="min-max:step" className="w-full p-2 border rounded mt-1 dark:bg-slate-800 dark:border-slate-600 dark:text-slate-200" aria-label="Parameter 1 Range" />
@@ -699,6 +721,7 @@ function App() {
                                         <optgroup label="Risk">
                                             <option value="stop_loss_atr">Stop-Loss ATR</option>
                                             <option value="risk_per_trade">Risk Per Trade</option>
+                                            <option value="trailing_atr_multiplier">Trailing Stop Multiplier</option>
                                         </optgroup>
                                     </select>
                                     <input type="text" value={optimizationParams.range2} onChange={e => setOptimizationParams(p => ({...p, range2: e.target.value}))} placeholder="min-max:step" className="w-full p-2 border rounded mt-1 dark:bg-slate-800 dark:border-slate-600 dark:text-slate-200" aria-label="Parameter 2 Range" />
@@ -740,7 +763,7 @@ function App() {
                 )}
             </main>
         </div>
-     );
+    );
 }
 
 export default App;

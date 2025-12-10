@@ -409,7 +409,7 @@ export const runBacktest = (
   const stdDev = periodReturns.length > 0 ? Math.sqrt(periodReturns.map(r => Math.pow(r - meanReturn, 2)).reduce((a, b) => a + b, 0) / periodReturns.length) : 0;
   
   const ann = timeframe === 'daily' ? 252 : timeframe === 'weekly' ? 52 : 12;
-  const sharpeRatio = stdDev > 0 ? (meanReturn * ann) / (stdDev * Math.sqrt(ann)) : 0; // Assuming risk-free rate is 0
+  const sharpeRatio = stdDev > 0 ? (meanReturn * ann) / (stdDev * Math.sqrt(ann)) : 0;
 
   const negReturns = periodReturns.filter(r => r < 0);
   const downsideDev = negReturns.length > 0 ? Math.sqrt(negReturns.map(r => r * r).reduce((a, b) => a + b, 0) / negReturns.length) : 0;
@@ -509,4 +509,4 @@ export const runOptimization = (data: StockData, baseParams: StrategyParameters,
 
     // Fallback for case where data is insufficient
     return { grid: [], best: null };
-  };
+};

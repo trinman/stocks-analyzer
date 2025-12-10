@@ -30,6 +30,9 @@ export interface StrategyParameters {
   macdSignal: number;
   riskPct: number;
   stopATR: number;
+  useTrailingStop: boolean;
+  trailingATRMultiplier: number;
+  trailingStopActivation?: 'immediate' | 'ratchet';
   commission: number;
   slipBps: number;
   useTrendFilter: boolean;

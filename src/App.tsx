@@ -740,7 +740,7 @@ function App() {
                 )}
             </main>
         </div>
-    );
+     );
 }
 
 export default App;

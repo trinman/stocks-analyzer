@@ -199,146 +199,247 @@ const generateSignals = (data: StockData, ind: Indicators, p: StrategyParameters
     return sigs;
 }
 
-export const runBacktest = (data: StockData, ind: Indicators, p: StrategyParameters, timeframe: Timeframe): BacktestResult => {
-    const { dates, o, h, l, c } = data, N = c.length;
-    const initialCapital = 10000;
-    const slip = p.slipBps / 10000;
+export const runBacktest = (
+  data: StockData,
+  ind: Indicators,
+  p: StrategyParameters,
+  timeframe: Timeframe
+): BacktestResult => {
+  const { dates, o, h, l, c } = data,
+    N = c.length;
+  const initialCapital = 10000;
+  const slip = p.slipBps / 10000;
 
-    let cash = initialCapital, pos: { shares: number, entry: number } | null = null;
-    const equity: number[] = [], equityDates: string[] = [];
-    let peak = initialCapital, maxDD = 0;
-    const trades: Trade[] = [];
-    const signals = generateSignals(data, ind, p);
-    const buyIdx = new Set(signals.filter(s => s.type === 'buy').map(s => s.index));
-    const sellIdx = new Set(signals.filter(s => s.type === 'sell').map(s => s.index));
-    const atr = ind.atr;
-    let exposureBars = 0;
+  let cash = initialCapital;
+  let pos: {
+    shares: number;
+    entry: number;
+    highestPrice: number;        // for trailing stop
+    trailingStopPrice: number;   // current active trailing level
+  } | null = null;
 
-    for (let i = 1; i < N; i++) {
-        // Use ATR from previous bar to avoid lookahead bias.
-        // Fallback to previous Close if ATR is null.
-        const prevATR = atr[i - 1] ?? (c[i - 1] * 0.02);
+  const equity: number[] = [];
+  const equityDates: string[] = [];
+  let peak = initialCapital,
+    maxDD = 0;
+  const trades: Trade[] = [];
+  const signals = generateSignals(data, ind, p);
+  const buyIdx = new Set(signals.filter((s) => s.type === 'buy').map((s) => s.index));
+  const sellIdx = new Set(signals.filter((s) => s.type === 'sell').map((s) => s.index));
+  const atr = ind.atr;
+  let exposureBars = 0;
 
-        // Signal exit
-        if (pos && sellIdx.has(i - 1)) {
-            const exitPx = o[i] * (1 - slip);
-            cash += pos.shares * exitPx - p.commission;
-            trades.push({ type: 'sell', date: dates[i], price: exitPx, shares: pos.shares, reason: 'Signal Exit' });
-            pos = null;
+  for (let i = 1; i < N; i++) {
+    const currHigh = h[i];
+    const currLow = l[i];
+    const openPx = o[i];
+    const atrToday = atr[i - 1] ?? c[i - 1] * 0.02; // strict no-lookahead
+
+    // ==================== TRAILING STOP UPDATE ====================
+    if (pos && p.useTrailingStop && atrToday > 0) {
+      // Update highest price seen since entry
+      if (currHigh > pos.highestPrice) {
+        pos.highestPrice = currHigh;
+
+        // Ratchet mode (default): only move stop up when price makes new high
+        if (p.trailingStopActivation !== 'immediate') {
+          const newTrail = pos.highestPrice - p.trailingATRMultiplier * atrToday;
+          if (newTrail > pos.trailingStopPrice) {
+            pos.trailingStopPrice = newTrail;
+          }
         }
-        
-        // Take Profit
-        if (pos && p.useTakeProfit) {
-            const takeProfitLvl = pos.entry + (p.takeProfitATR * prevATR);
-            if (h[i] >= takeProfitLvl) {
-                const px = Math.max(o[i], takeProfitLvl) * (1 - slip);
-                cash += pos.shares * px - p.commission;
-                trades.push({ type: 'sell', date: dates[i], price: px, shares: pos.shares, reason: 'Take Profit' });
-                pos = null;
-            }
-        }
+      }
 
-        // Stop loss
-        if (pos) {
-            const stopLvl = pos.entry - (p.stopATR * prevATR);
-            if (l[i] <= stopLvl) {
-                const px = Math.min(o[i], stopLvl) * (1 - slip);
-                cash += pos.shares * px - p.commission;
-                trades.push({ type: 'sell', date: dates[i], price: px, shares: pos.shares, reason: 'Stop Loss' });
-                pos = null;
-            }
-        }
-        // Signal entry
-        if (!pos && buyIdx.has(i - 1)) {
-            const px = o[i] * (1 + slip);
-            const stopDist = Math.max(0.01, p.stopATR * prevATR);
-            const riskDollars = cash * (p.riskPct / 100);
-            const shares = Math.floor(riskDollars / stopDist);
-            if (shares > 0 && cash >= shares * px + p.commission) {
-                cash -= shares * px + p.commission;
-                pos = { shares, entry: px };
-                trades.push({ type: 'buy', date: dates[i], price: px, shares, reason: 'Signal Entry' });
-            }
-        }
-
-        if (pos) exposureBars++;
-
-        const eq = cash + (pos ? pos.shares * c[i] : 0);
-        equity.push(eq);
-        equityDates.push(dates[i]);
-        if (eq > peak) peak = eq;
-        maxDD = Math.max(maxDD, (peak - eq) / peak * 100);
+      // Immediate mode: trail from current close every bar
+      if (p.trailingStopActivation === 'immediate') {
+        pos.trailingStopPrice = c[i] - p.trailingATRMultiplier * atrToday;
+      }
     }
 
+    // ==================== EXIT CHECKS ====================
+
+    // 1. Signal exit (reversal sell)
+    if (pos && sellIdx.has(i - 1)) {
+      const exitPx = openPx * (1 - slip);
+      cash += pos.shares * exitPx - p.commission;
+      trades.push({
+        type: 'sell',
+        date: dates[i],
+        price: exitPx,
+        shares: pos.shares,
+        reason: 'Reversal Sell Signal',
+      });
+      pos = null;
+      continue;
+    }
+
+    // 2. Trailing Stop Hit
+    if (pos && p.useTrailingStop && currLow <= pos.trailingStopPrice) {
+      const exitPx = Math.min(openPx, pos.trailingStopPrice) * (1 - slip);
+      cash += pos.shares * exitPx - p.commission;
+      trades.push({
+        type: 'sell',
+        date: dates[i],
+        price: exitPx,
+        shares: pos.shares,
+        reason: 'Trailing Stop',
+      });
+      pos = null;
+      continue;
+    }
+
+    // 3. Fixed Take Profit
+    if (
+      pos &&
+      p.useTakeProfit &&
+      currHigh >= pos.entry + p.takeProfitATR * atrToday
+    ) {
+      const tpLevel = pos.entry + p.takeProfitATR * atrToday;
+      const exitPx = Math.max(openPx, tpLevel) * (1 - slip);
+      cash += pos.shares * exitPx - p.commission;
+      trades.push({
+        type: 'sell',
+        date: dates[i],
+        price: exitPx,
+        shares: pos.shares,
+        reason: 'Fixed Take Profit',
+      });
+      pos = null;
+      continue;
+    }
+
+    // 4. Initial Stop Loss
     if (pos) {
-        const px = c[N - 1] * (1 - slip);
-        cash += pos.shares * px - p.commission;
-        trades.push({ type: 'sell', date: dates[N - 1], price: px, shares: pos.shares, reason: 'Final Close' });
-    }
-    const finalEquity = cash;
-
-    // Calculate metrics
-    const paired: { buy: Trade, sell: Trade }[] = [];
-    let lastBuy: Trade | null = null;
-    for (const t of trades) {
-        if (t.type === 'buy') lastBuy = t;
-        else if (t.type === 'sell' && lastBuy) {
-            paired.push({ buy: lastBuy, sell: t });
-            lastBuy = null;
-        }
-    }
-
-    const rets = paired.map(p => (p.sell.price - p.buy.price) / p.buy.price);
-    const wins = rets.filter(r => r > 0);
-    const losses = rets.filter(r => r <= 0);
-    const winRate = paired.length > 0 ? (wins.length / paired.length) * 100 : 0;
-    const avgWin = wins.length ? wins.reduce((a, b) => a + b, 0) / wins.length * 100 : 0;
-    const avgLoss = losses.length ? Math.abs(losses.reduce((a, b) => a + b, 0) / losses.length) * 100 : 0;
-    
-    const grossProfit = paired.filter(p => p.sell.price > p.buy.price).reduce((sum, p) => sum + (p.sell.price - p.buy.price) * p.buy.shares, 0);
-    const grossLoss = paired.filter(p => p.sell.price <= p.buy.price).reduce((sum, p) => sum + (p.buy.price - p.sell.price) * p.buy.shares, 0);
-    const profitFactor = grossLoss > 0 ? grossProfit / grossLoss : Infinity;
-
-    const years = (new Date(dates[dates.length - 1]).getTime() - new Date(dates[0]).getTime()) / (365.25 * 24 * 3600 * 1000);
-    const totalReturn = (finalEquity - initialCapital) / initialCapital * 100;
-    const cagr = years > 0 ? (Math.pow(finalEquity / initialCapital, 1 / years) - 1) * 100 : 0;
-    
-    const periodReturns = equity.slice(1).map((e, i) => (e - equity[i]) / equity[i]);
-    const meanReturn = periodReturns.length > 0 ? periodReturns.reduce((a, b) => a + b, 0) / periodReturns.length : 0;
-    const stdDev = periodReturns.length > 0 ? Math.sqrt(periodReturns.map(r => Math.pow(r - meanReturn, 2)).reduce((a, b) => a + b, 0) / periodReturns.length) : 0;
-    
-    const ann = timeframe === 'daily' ? 252 : timeframe === 'weekly' ? 52 : 12;
-    const sharpeRatio = stdDev > 0 ? (meanReturn * ann) / (stdDev * Math.sqrt(ann)) : 0; // Assuming risk-free rate is 0
-
-    const negReturns = periodReturns.filter(r => r < 0);
-    const downsideDev = negReturns.length > 0 ? Math.sqrt(negReturns.map(r => r * r).reduce((a, b) => a + b, 0) / negReturns.length) : 0;
-    const sortinoRatio = downsideDev > 0 ? (meanReturn * ann) / (downsideDev * Math.sqrt(ann)) : 0;
-
-    const calmarRatio = maxDD > 0 ? cagr / maxDD : Infinity;
-
-    let consecLoss = 0, maxConsecLosses = 0;
-    for (const r of rets) {
-        if (r <= 0) {
-            consecLoss++;
-            maxConsecLosses = Math.max(maxConsecLosses, consecLoss);
-        } else {
-            consecLoss = 0;
-        }
+      const stopLvl = pos.entry - p.stopATR * atrToday;
+      if (currLow <= stopLvl) {
+        const exitPx = Math.min(openPx, stopLvl) * (1 - slip);
+        cash += pos.shares * exitPx - p.commission;
+        trades.push({
+          type: 'sell',
+          date: dates[i],
+          price: exitPx,
+          shares: pos.shares,
+          reason: 'Initial Stop Loss',
+        });
+        pos = null;
+        continue;
+      }
     }
 
-    return {
-        trades,
-        signals,
-        equity,
-        equityDates,
-        metrics: {
-            finalEquity, totalReturn, winRate, profitFactor, avgWin, avgLoss,
-            maxDrawdown: maxDD, sharpeRatio, sortinoRatio, calmarRatio,
-            cagr, numTrades: paired.length,
-            timeInMarketPct: (exposureBars / N) * 100,
-            maxConsecLosses,
-        }
-    };
+    // ==================== ENTRY ====================
+    if (!pos && buyIdx.has(i - 1)) {
+      const entryPx = openPx * (1 + slip);
+      const stopDist = Math.max(0.01, p.stopATR * atrToday);
+      const riskDollars = cash * (p.riskPct / 100);
+      const shares = Math.floor(riskDollars / stopDist);
+
+      if (shares > 0 && cash >= shares * entryPx + p.commission) {
+        cash -= shares * entryPx + p.commission;
+        pos = {
+          shares,
+          entry: entryPx,
+          highestPrice: currHigh,
+          trailingStopPrice:
+            p.useTrailingStop && p.trailingStopActivation === 'immediate'
+              ? entryPx - p.trailingATRMultiplier * atrToday
+              : entryPx - p.stopATR * atrToday, // initial trail starts at initial stop level for ratchet
+        };
+        trades.push({
+          type: 'buy',
+          date: dates[i],
+          price: entryPx,
+          shares,
+          reason: 'Signal Entry',
+        });
+      }
+    }
+
+    if (pos) exposureBars++;
+
+    const eq = cash + (pos ? pos.shares * c[i] : 0);
+    equity.push(eq);
+    equityDates.push(dates[i]);
+    if (eq > peak) peak = eq;
+    maxDD = Math.max(maxDD, ((peak - eq) / peak) * 100);
+  }
+
+  // Final position close (with commission!)
+  if (pos) {
+    const finalPx = c[N - 1] * (1 - slip);
+    cash += pos.shares * finalPx - p.commission;
+    trades.push({
+      type: 'sell',
+      date: dates[dates.length - 1],
+      price: finalPx,
+      shares: pos.shares,
+      reason: 'End of Data',
+    });
+  }
+
+  const finalEquity = cash;
+
+  // Calculate metrics
+  const paired: { buy: Trade, sell: Trade }[] = [];
+  let lastBuy: Trade | null = null;
+  for (const t of trades) {
+      if (t.type === 'buy') lastBuy = t;
+      else if (t.type === 'sell' && lastBuy) {
+          paired.push({ buy: lastBuy, sell: t });
+          lastBuy = null;
+      }
+  }
+
+  const rets = paired.map(p => (p.sell.price - p.buy.price) / p.buy.price);
+  const wins = rets.filter(r => r > 0);
+  const losses = rets.filter(r => r <= 0);
+  const winRate = paired.length > 0 ? (wins.length / paired.length) * 100 : 0;
+  const avgWin = wins.length ? wins.reduce((a, b) => a + b, 0) / wins.length * 100 : 0;
+  const avgLoss = losses.length ? Math.abs(losses.reduce((a, b) => a + b, 0) / losses.length) * 100 : 0;
+  
+  const grossProfit = paired.filter(p => p.sell.price > p.buy.price).reduce((sum, p) => sum + (p.sell.price - p.buy.price) * p.buy.shares, 0);
+  const grossLoss = paired.filter(p => p.sell.price <= p.buy.price).reduce((sum, p) => sum + (p.buy.price - p.sell.price) * p.buy.shares, 0);
+  const profitFactor = grossLoss > 0 ? grossProfit / grossLoss : Infinity;
+
+  const years = (new Date(dates[dates.length - 1]).getTime() - new Date(dates[0]).getTime()) / (365.25 * 24 * 3600 * 1000);
+  const totalReturn = (finalEquity - initialCapital) / initialCapital * 100;
+  const cagr = years > 0 ? (Math.pow(finalEquity / initialCapital, 1 / years) - 1) * 100 : 0;
+  
+  const periodReturns = equity.slice(1).map((e, i) => (e - equity[i]) / equity[i]);
+  const meanReturn = periodReturns.length > 0 ? periodReturns.reduce((a, b) => a + b, 0) / periodReturns.length : 0;
+  const stdDev = periodReturns.length > 0 ? Math.sqrt(periodReturns.map(r => Math.pow(r - meanReturn, 2)).reduce((a, b) => a + b, 0) / periodReturns.length) : 0;
+  
+  const ann = timeframe === 'daily' ? 252 : timeframe === 'weekly' ? 52 : 12;
+  const sharpeRatio = stdDev > 0 ? (meanReturn * ann) / (stdDev * Math.sqrt(ann)) : 0;
+
+  const negReturns = periodReturns.filter(r => r < 0);
+  const downsideDev = negReturns.length > 0 ? Math.sqrt(negReturns.map(r => r * r).reduce((a, b) => a + b, 0) / negReturns.length) : 0;
+  const sortinoRatio = downsideDev > 0 ? (meanReturn * ann) / (downsideDev * Math.sqrt(ann)) : 0;
+
+  const calmarRatio = maxDD > 0 ? cagr / maxDD : Infinity;
+
+  let consecLoss = 0, maxConsecLosses = 0;
+  for (const r of rets) {
+      if (r <= 0) {
+          consecLoss++;
+          maxConsecLosses = Math.max(maxConsecLosses, consecLoss);
+      } else {
+          consecLoss = 0;
+      }
+  }
+
+  return {
+      trades,
+      signals,
+      equity,
+      equityDates,
+      metrics: {
+          finalEquity, totalReturn, winRate, profitFactor, avgWin, avgLoss,
+          maxDrawdown: maxDD, sharpeRatio, sortinoRatio, calmarRatio,
+          cagr, numTrades: paired.length,
+          timeInMarketPct: (exposureBars / N) * 100,
+          maxConsecLosses,
+      }
+  };
 };
 
 // OPTIMIZATION ENGINE
@@ -353,6 +454,7 @@ const paramKeyMap: { [key: string]: keyof StrategyParameters } = {
     'macd_fast': 'macdFast',
     'macd_slow': 'macdSlow',
     'macd_signal': 'macdSignal',
+    'trailing_atr_multiplier': 'trailingATRMultiplier',
 };
 
 export const runOptimization = (data: StockData, baseParams: StrategyParameters, p1Key: string, p1Range: number[], p2Key: string, p2Range: number[], metric: string) => {

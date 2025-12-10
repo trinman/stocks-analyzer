@@ -505,3 +505,8 @@ export const runOptimization = (data: StockData, baseParams: StrategyParameters,
         }
          return { grid, best };
     }
+
+
+    // Fallback for case where data is insufficient
+    return { grid: [], best: null };
+  };

@@ -604,6 +604,52 @@ function App() {
                     </div>
                 )}
                 
+                {/* Step 3: Backtest Results */}
+                {currentStep === AppStep.Backtest && backtestResult && benchmarkResult && (
+                    <div className="animate-fade-in space-y-6">
+                        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                            <h2 className="text-2xl font-bold text-slate-700 dark:text-slate-200">Backtest Results</h2>
+                            <div className="flex items-center gap-3">
+                                <TimeframeSelector selected={currentTimeframe} onSelect={(tf) => { setCurrentTimeframe(tf); handleRunBacktest(); }} />
+                                <div className="flex gap-2">
+                                    <button onClick={() => exportTradesCSV(backtestResult, stockSymbol)} className="p-2 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg" title="Export Trades">
+                                        <DownloadIcon />
+                                    </button>
+                                    <button onClick={() => exportSummaryCSV(backtestResult, benchmarkResult, strategyParams, stockSymbol, currentTimeframe)} className="p-2 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg" title="Export Summary">
+                                        <ChartLineIcon />
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Metrics Grid */}
+                        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+                            <MetricCard label="Total Return" value={`${backtestResult.metrics.totalReturn.toFixed(2)}%`} colorClass={backtestResult.metrics.totalReturn >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'} />
+                            <MetricCard label="CAGR" value={`${backtestResult.metrics.cagr.toFixed(2)}%`} />
+                            <MetricCard label="Sharpe Ratio" value={backtestResult.metrics.sharpeRatio.toFixed(2)} />
+                            <MetricCard label="Max Drawdown" value={`${backtestResult.metrics.maxDrawdown.toFixed(2)}%`} colorClass="text-red-600 dark:text-red-400" />
+                            <MetricCard label="Win Rate" value={`${backtestResult.metrics.winRate.toFixed(1)}%`} />
+                            <MetricCard label="Profit Factor" value={backtestResult.metrics.profitFactor.toFixed(2)} />
+                        </div>
+
+                        {/* Charts */}
+                        {indicators && (
+                            <PriceAndIndicatorCharts stockData={resampledData || dailyData!} indicators={indicators} backtestResult={backtestResult} theme={theme} />
+                        )}
+
+                        {/* Bottom Section: Signals & AI */}
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                            <SignalList signals={backtestResult.signals} />
+                            <GeminiChat 
+                                backtestResult={backtestResult} 
+                                benchmarkResult={benchmarkResult} 
+                                strategyParams={strategyParams} 
+                                onReset={() => {}} 
+                            />
+                        </div>
+                    </div>
+                )}
+                
                 {/* Step 4: Optimization */}
                 {currentStep === AppStep.Optimization && (
                     <div className="animate-fade-in">

@@ -214,8 +214,8 @@ export const runBacktest = (
   let pos: {
     shares: number;
     entry: number;
-    highestPrice: number;        // for trailing stop
-    trailingStopPrice: number;   // current active trailing level
+    highestPrice: number;        // NEW: for trailing stop
+    trailingStopPrice: number;   // NEW: current active trailing level
   } | null = null;
 
   const equity: number[] = [];
@@ -288,7 +288,7 @@ export const runBacktest = (
       continue;
     }
 
-    // 3. Fixed Take Profit
+    // 3. Fixed Take Profit (optional – you can now disable this)
     if (
       pos &&
       p.useTakeProfit &&
@@ -342,7 +342,7 @@ export const runBacktest = (
           trailingStopPrice:
             p.useTrailingStop && p.trailingStopActivation === 'immediate'
               ? entryPx - p.trailingATRMultiplier * atrToday
-              : entryPx - p.stopATR * atrToday, // initial trail starts at initial stop level for ratchet
+              : entryPx - p.stopATR * atrToday, // initial trail = original stop
         };
         trades.push({
           type: 'buy',
@@ -409,7 +409,7 @@ export const runBacktest = (
   const stdDev = periodReturns.length > 0 ? Math.sqrt(periodReturns.map(r => Math.pow(r - meanReturn, 2)).reduce((a, b) => a + b, 0) / periodReturns.length) : 0;
   
   const ann = timeframe === 'daily' ? 252 : timeframe === 'weekly' ? 52 : 12;
-  const sharpeRatio = stdDev > 0 ? (meanReturn * ann) / (stdDev * Math.sqrt(ann)) : 0;
+  const sharpeRatio = stdDev > 0 ? (meanReturn * ann) / (stdDev * Math.sqrt(ann)) : 0; // Assuming risk-free rate is 0
 
   const negReturns = periodReturns.filter(r => r < 0);
   const downsideDev = negReturns.length > 0 ? Math.sqrt(negReturns.map(r => r * r).reduce((a, b) => a + b, 0) / negReturns.length) : 0;
@@ -505,8 +505,3 @@ export const runOptimization = (data: StockData, baseParams: StrategyParameters,
         }
          return { grid, best };
     }
-
-
-    // Fallback for case where data is insufficient
-    return { grid: [], best: null };
-};

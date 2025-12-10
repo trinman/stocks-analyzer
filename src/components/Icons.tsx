@@ -1,14 +1,4 @@
-<path d="M12 12a3 3 0 1 0 5.993.129" />
-    <path d="M12 19a3 3 0 1 0-5.993.129" />
-    <path d="M12 19a3 3 0 1 0 5.993.129" />
-    <path d="M21 12h-3" />
-    <path d="M6 12H3" />
-    <path d="M10.622 8.356 9 5" />
-    <path d="M10.622 15.644 9 19" />
-    <path d="M13.378 8.356 15 5" />
-    <path d="M13.378 15.644 15 19" />
-  </svg>
-);import React from 'react';
+import React from 'react';
 
 export const ChartLineIcon = () => (
   <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -54,7 +44,17 @@ export const BrainCircuitIcon = () => (
     <path d="M12 5a3 3 0 1 0-5.993.129" />
     <path d="M12 5a3 3 0 1 0 5.993.129" />
     <path d="M12 12a3 3 0 1 0-5.993.129" />
-    
+    <path d="M12 12a3 3 0 1 0 5.993.129" />
+    <path d="M12 19a3 3 0 1 0-5.993.129" />
+    <path d="M12 19a3 3 0 1 0 5.993.129" />
+    <path d="M21 12h-3" />
+    <path d="M6 12H3" />
+    <path d="M10.622 8.356 9 5" />
+    <path d="M10.622 15.644 9 19" />
+    <path d="M13.378 8.356 15 5" />
+    <path d="M13.378 15.644 15 19" />
+  </svg>
+);
 
 export const SendIcon = () => (
     <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

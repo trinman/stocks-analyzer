@@ -16,7 +16,8 @@ const defaultStrategyParams: StrategyParameters = {
     bbPeriod: 20, bbStd: 2,
     rsiPeriod: 14, rsiOverbought: 70, rsiOversold: 30,
     macdFast: 12, macdSlow: 26, macdSignal: 9,
-    riskPct: 1, stopATR: 2, useTrailingStop: false, trailingATRMultiplier: 3.0, trailingStopActivation: 'ratchet', commission: 0.5, slipBps: 5,
+    riskPct: 1, stopATR: 2, commission: 0.5, slipBps: 5,
+    useTrailingStop: false, trailingATRMultiplier: 3.0, trailingStopActivation: 'ratchet',
     useTrendFilter: true,
     trendFilterPeriod: 200,
     useTakeProfit: true,
@@ -604,49 +605,62 @@ function App() {
                     </div>
                 )}
                 
-                {/* Step 3: Backtest Results */}
-                {currentStep === AppStep.Backtest && backtestResult && benchmarkResult && (
-                    <div className="animate-fade-in space-y-6">
-                        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                            <h2 className="text-2xl font-bold text-slate-700 dark:text-slate-200">Backtest Results</h2>
-                            <div className="flex items-center gap-3">
-                                <TimeframeSelector selected={currentTimeframe} onSelect={(tf) => { setCurrentTimeframe(tf); handleRunBacktest(); }} />
-                                <div className="flex gap-2">
-                                    <button onClick={() => exportTradesCSV(backtestResult, stockSymbol)} className="p-2 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg" title="Export Trades">
-                                        <DownloadIcon />
-                                    </button>
-                                    <button onClick={() => exportSummaryCSV(backtestResult, benchmarkResult, strategyParams, stockSymbol, currentTimeframe)} className="p-2 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg" title="Export Summary">
-                                        <ChartLineIcon />
-                                    </button>
-                                </div>
+                {/* Step 3: Backtest */}
+                {currentStep === AppStep.Backtest && (
+                    <div className="animate-fade-in">
+                        <div className="flex flex-col sm:flex-row justify-between items-center mb-4 gap-4">
+                            <h2 className="text-2xl font-bold text-slate-700 dark:text-slate-200">Backtest & AI Analysis</h2>
+                            <div className="flex items-center gap-4">
+                                <TimeframeSelector selected={currentTimeframe} onSelect={setCurrentTimeframe} />
+                                <button onClick={handleRunBacktest} disabled={isLoading} className="flex items-center justify-center gap-2 bg-green-600 text-white font-semibold px-6 py-3 rounded-lg hover:bg-green-700 transition disabled:bg-slate-400">
+                                    <PlayIcon /> {isLoading ? 'Running...' : 'Run Backtest'}
+                                </button>
                             </div>
                         </div>
+                        {backtestResult && benchmarkResult && indicators && resampledData && (
+                            <div className="mt-6 space-y-6">
+                                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                    <MetricCard label="Final Equity" value={`$${backtestResult.metrics.finalEquity.toFixed(2)}`} />
+                                    <MetricCard label="Total Return" value={`${backtestResult.metrics.totalReturn.toFixed(2)}%`} colorClass={backtestResult.metrics.totalReturn >= 0 ? 'text-green-500' : 'text-red-500'} />
+                                    <MetricCard label="Buy & Hold Return" value={`${benchmarkResult.ret.toFixed(2)}%`} colorClass="dark:text-slate-100" />
+                                    <MetricCard label="Sharpe Ratio" value={backtestResult.metrics.sharpeRatio.toFixed(3)} colorClass="dark:text-slate-100" />
+                                    <MetricCard label="CAGR (Strategy)" value={`${backtestResult.metrics.cagr.toFixed(2)}%`} colorClass={backtestResult.metrics.cagr > benchmarkResult.cagr ? 'text-green-500' : 'text-red-500'} />
+                                    <MetricCard label="CAGR (Buy & Hold)" value={`${benchmarkResult.cagr.toFixed(2)}%`} colorClass="dark:text-slate-100" />
+                                    <MetricCard label="Alpha (Annualized)" value={`${(backtestResult.metrics.cagr - benchmarkResult.cagr).toFixed(2)}%`} colorClass={(backtestResult.metrics.cagr - benchmarkResult.cagr) > 0 ? 'text-green-500' : 'text-red-500'}/>
+                                    <MetricCard label="Max Drawdown" value={`${backtestResult.metrics.maxDrawdown.toFixed(2)}%`} colorClass="text-red-500" />
+                                    <MetricCard label="Win Rate" value={`${backtestResult.metrics.winRate.toFixed(2)}%`} colorClass="dark:text-slate-100"/>
+                                    <MetricCard label="Profit Factor" value={backtestResult.metrics.profitFactor === Infinity ? '∞' : backtestResult.metrics.profitFactor.toFixed(2)} colorClass="dark:text-slate-100"/>
+                                    <MetricCard label="# Trades" value={backtestResult.metrics.numTrades} colorClass="dark:text-slate-100"/>
+                                    <MetricCard label="Exposure" value={`${backtestResult.metrics.timeInMarketPct.toFixed(1)}%`} colorClass="dark:text-slate-100"/>
+                                    <MetricCard label="Sortino Ratio" value={backtestResult.metrics.sortinoRatio.toFixed(3)} colorClass="dark:text-slate-100"/>
+                                    <MetricCard label="Calmar Ratio" value={backtestResult.metrics.calmarRatio === Infinity ? '∞' : backtestResult.metrics.calmarRatio.toFixed(3)} colorClass="dark:text-slate-100"/>
+                                    <MetricCard label="Avg Win / Loss" value={`${backtestResult.metrics.avgWin.toFixed(2)}% / ${backtestResult.metrics.avgLoss.toFixed(2)}%`} colorClass="dark:text-slate-100"/>
+                                    <MetricCard label="Max Loss Streak" value={backtestResult.metrics.maxConsecLosses} colorClass="dark:text-slate-100"/>
+                                </div>
 
-                        {/* Metrics Grid */}
-                        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-                            <MetricCard label="Total Return" value={`${backtestResult.metrics.totalReturn.toFixed(2)}%`} colorClass={backtestResult.metrics.totalReturn >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'} />
-                            <MetricCard label="CAGR" value={`${backtestResult.metrics.cagr.toFixed(2)}%`} />
-                            <MetricCard label="Sharpe Ratio" value={backtestResult.metrics.sharpeRatio.toFixed(2)} />
-                            <MetricCard label="Max Drawdown" value={`${backtestResult.metrics.maxDrawdown.toFixed(2)}%`} colorClass="text-red-600 dark:text-red-400" />
-                            <MetricCard label="Win Rate" value={`${backtestResult.metrics.winRate.toFixed(1)}%`} />
-                            <MetricCard label="Profit Factor" value={backtestResult.metrics.profitFactor.toFixed(2)} />
-                        </div>
 
-                        {/* Charts */}
-                        {indicators && (
-                            <PriceAndIndicatorCharts stockData={resampledData || dailyData!} indicators={indicators} backtestResult={backtestResult} theme={theme} />
+                                <div className="flex justify-end items-center gap-3">
+                                    <h3 className="text-sm font-semibold text-slate-600 dark:text-slate-300">Export Results:</h3>
+                                    <button onClick={() => exportTradesCSV(backtestResult, stockSymbol)} className="flex items-center gap-2 text-sm bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 font-semibold px-4 py-2 rounded-lg transition"><DownloadIcon /> Trades</button>
+                                    <button onClick={() => exportSummaryCSV(backtestResult, benchmarkResult, strategyParams, stockSymbol, currentTimeframe)} className="flex items-center gap-2 text-sm bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 font-semibold px-4 py-2 rounded-lg transition"><DownloadIcon /> Summary</button>
+                                </div>
+                                
+                                <PriceAndIndicatorCharts theme={theme} stockData={resampledData} indicators={indicators} backtestResult={backtestResult} />
+
+                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                                    <SignalList signals={backtestResult.signals} />
+                                    <div className="bg-slate-50 dark:bg-slate-800/50 p-4 sm:p-6 rounded-xl border border-slate-200 dark:border-slate-700">
+                                        <h3 className="text-xl font-bold text-slate-700 dark:text-slate-200 mb-4 flex items-center gap-3"><BrainCircuitIcon /> Gemini AI Analysis Chat</h3>
+                                         <GeminiChat 
+                                            backtestResult={backtestResult}
+                                            benchmarkResult={benchmarkResult}
+                                            strategyParams={strategyParams}
+                                            onReset={handleRunBacktest}
+                                        />
+                                    </div>
+                                </div>
+                            </div>
                         )}
-
-                        {/* Bottom Section: Signals & AI */}
-                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                            <SignalList signals={backtestResult.signals} />
-                            <GeminiChat 
-                                backtestResult={backtestResult} 
-                                benchmarkResult={benchmarkResult} 
-                                strategyParams={strategyParams} 
-                                onReset={() => {}} 
-                            />
-                        </div>
                     </div>
                 )}
                 

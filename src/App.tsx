@@ -24,6 +24,7 @@ const defaultStrategyParams: StrategyParameters = {
     takeProfitATR: 1.5,
     useMomentumEntry: true,
     momentumSMAPeriod: 50,
+    allowFractionalShares: false,
 };
 
 const defaultOptimizationParams = {
@@ -442,12 +443,14 @@ function App() {
                 throw new Error("Invalid range specification for Parameter 1.");
             }
 
+            const dataForOptimization = resampleOHLC(dailyData, currentTimeframe);
             const { grid, best } = runOptimization(
-                dailyData, 
+                dataForOptimization, 
                 strategyParams, 
                 optimizationParams.param1, p1Range, 
                 optimizationParams.param2, p2Range, 
-                optimizationParams.metric
+                optimizationParams.metric,
+                currentTimeframe
             );
             
             setOptimizationResult({
@@ -464,7 +467,7 @@ function App() {
         } finally {
             setIsLoading(false);
         }
-    }, [dailyData, strategyParams, optimizationParams]);
+    }, [dailyData, strategyParams, optimizationParams, currentTimeframe]);
 
     const indicators = useMemo(() => {
         const data = resampledData || dailyData;
@@ -561,6 +564,12 @@ function App() {
                                <label className="block mt-2 text-sm text-slate-600 dark:text-slate-400">Stop Loss (ATR×): <input className="w-full p-1 border rounded dark:bg-slate-800 dark:border-slate-600 dark:text-slate-200" type="number" step="0.1" value={strategyParams.stopATR} onChange={e => setStrategyParams(p => ({...p, stopATR: +e.target.value}))} /></label>
                                <label className="block mt-2 text-sm text-slate-600 dark:text-slate-400">Slippage (bps): <input className="w-full p-1 border rounded dark:bg-slate-800 dark:border-slate-600 dark:text-slate-200" type="number" value={strategyParams.slipBps} onChange={e => setStrategyParams(p => ({...p, slipBps: +e.target.value}))} /></label>
                                <label className="block mt-2 text-sm text-slate-600 dark:text-slate-400">Commission ($): <input className="w-full p-1 border rounded dark:bg-slate-800 dark:border-slate-600 dark:text-slate-200" type="number" step="0.1" value={strategyParams.commission} onChange={e => setStrategyParams(p => ({...p, commission: +e.target.value}))} /></label>
+                               
+                               <label className="flex items-center gap-2 mt-3 text-slate-700 dark:text-slate-300">
+                                   <input type="checkbox" checked={strategyParams.allowFractionalShares} onChange={e => setStrategyParams(p => ({...p, allowFractionalShares: e.target.checked}))} className="dark:bg-slate-900 dark:border-slate-600" />
+                                   Allow Fractional Shares
+                               </label>
+                               <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Useful for crypto, forex, and any strategy that should support partial units.</p>
                                
                                <div className="mt-3 pt-3 border-t dark:border-slate-600">
                                    <label className="flex items-center gap-2 text-slate-700 dark:text-slate-300">

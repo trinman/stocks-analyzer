@@ -41,6 +41,7 @@ export interface StrategyParameters {
   takeProfitATR: number;
   useMomentumEntry: boolean;
   momentumSMAPeriod: number;
+  allowFractionalShares: boolean;
 }
 
 export interface Trade {

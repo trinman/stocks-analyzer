@@ -383,6 +383,10 @@ function App() {
         try {
             const data = await fetchDailyData(stockSymbol.toUpperCase());
             setDailyData(data);
+            setResampledData(null);
+            setBacktestResult(null);
+            setBenchmarkResult(null);
+            setOptimizationResult(null);
             setCurrentStep(AppStep.StrategySetup);
         } catch (err) {
             setError((err as Error).message);
@@ -564,12 +568,7 @@ function App() {
                                <label className="block mt-2 text-sm text-slate-600 dark:text-slate-400">Stop Loss (ATR×): <input className="w-full p-1 border rounded dark:bg-slate-800 dark:border-slate-600 dark:text-slate-200" type="number" step="0.1" value={strategyParams.stopATR} onChange={e => setStrategyParams(p => ({...p, stopATR: +e.target.value}))} /></label>
                                <label className="block mt-2 text-sm text-slate-600 dark:text-slate-400">Slippage (bps): <input className="w-full p-1 border rounded dark:bg-slate-800 dark:border-slate-600 dark:text-slate-200" type="number" value={strategyParams.slipBps} onChange={e => setStrategyParams(p => ({...p, slipBps: +e.target.value}))} /></label>
                                <label className="block mt-2 text-sm text-slate-600 dark:text-slate-400">Commission ($): <input className="w-full p-1 border rounded dark:bg-slate-800 dark:border-slate-600 dark:text-slate-200" type="number" step="0.1" value={strategyParams.commission} onChange={e => setStrategyParams(p => ({...p, commission: +e.target.value}))} /></label>
-                               
-                               <label className="flex items-center gap-2 mt-3 text-slate-700 dark:text-slate-300">
-                                   <input type="checkbox" checked={strategyParams.allowFractionalShares} onChange={e => setStrategyParams(p => ({...p, allowFractionalShares: e.target.checked}))} className="dark:bg-slate-900 dark:border-slate-600" />
-                                   Allow Fractional Shares
-                               </label>
-                               <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Useful for crypto, forex, and any strategy that should support partial units.</p>
+                               <label className="flex items-center gap-2 mt-3 text-slate-700 dark:text-slate-300"><input type="checkbox" checked={strategyParams.allowFractionalShares} onChange={e => setStrategyParams(p => ({...p, allowFractionalShares: e.target.checked}))} className="dark:bg-slate-900 dark:border-slate-600" /> Allow Fractional Shares</label>
                                
                                <div className="mt-3 pt-3 border-t dark:border-slate-600">
                                    <label className="flex items-center gap-2 text-slate-700 dark:text-slate-300">
@@ -612,51 +611,73 @@ function App() {
                 )}
                 
                 {/* Step 3: Backtest Results */}
-                {currentStep === AppStep.Backtest && backtestResult && benchmarkResult && (
+                {currentStep === AppStep.Backtest && (
                     <div className="animate-fade-in space-y-6">
-                        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                            <h2 className="text-2xl font-bold text-slate-700 dark:text-slate-200">Backtest Results</h2>
-                            <div className="flex items-center gap-3">
-                                <TimeframeSelector selected={currentTimeframe} onSelect={(tf) => { setCurrentTimeframe(tf); handleRunBacktest(); }} />
-                                <div className="flex gap-2">
-                                    <button onClick={() => exportTradesCSV(backtestResult, stockSymbol)} className="p-2 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg" title="Export Trades">
-                                        <DownloadIcon />
+                        <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
+                            <div>
+                                <h2 className="text-2xl font-bold text-slate-700 dark:text-slate-200">Backtest & AI Analysis</h2>
+                                <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+                                    Select a timeframe and run the strategy. Results, charts, and AI analysis will appear below.
+                                </p>
+                            </div>
+                            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 w-full lg:w-auto">
+                                <TimeframeSelector selected={currentTimeframe} onSelect={setCurrentTimeframe} />
+                                <div className="flex items-center gap-2">
+                                    <button onClick={handleRunBacktest} disabled={isLoading || !dailyData} className="flex items-center justify-center gap-2 bg-blue-600 text-white font-semibold px-6 py-3 rounded-lg hover:bg-blue-700 transition disabled:bg-slate-400 disabled:cursor-not-allowed whitespace-nowrap">
+                                        <PlayIcon /> {isLoading ? 'Running...' : (backtestResult ? 'Re-Run Backtest' : 'Run Backtest')}
                                     </button>
-                                    <button onClick={() => exportSummaryCSV(backtestResult, benchmarkResult, strategyParams, stockSymbol, currentTimeframe)} className="p-2 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg" title="Export Summary">
-                                        <ChartLineIcon />
-                                    </button>
+                                    {backtestResult && benchmarkResult && (
+                                        <>
+                                            <button onClick={() => exportTradesCSV(backtestResult, stockSymbol)} className="p-2 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg" title="Export Trades">
+                                                <DownloadIcon />
+                                            </button>
+                                            <button onClick={() => exportSummaryCSV(backtestResult, benchmarkResult, strategyParams, stockSymbol, currentTimeframe)} className="p-2 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg" title="Export Summary">
+                                                <ChartLineIcon />
+                                            </button>
+                                        </>
+                                    )}
                                 </div>
                             </div>
                         </div>
 
-                        {/* Metrics Grid */}
-                        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-                            <MetricCard label="Total Return" value={`${backtestResult.metrics.totalReturn.toFixed(2)}%`} colorClass={backtestResult.metrics.totalReturn >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'} />
-                            <MetricCard label="CAGR" value={`${backtestResult.metrics.cagr.toFixed(2)}%`} />
-                            <MetricCard label="Sharpe Ratio" value={backtestResult.metrics.sharpeRatio.toFixed(2)} />
-                            <MetricCard label="Max Drawdown" value={`${backtestResult.metrics.maxDrawdown.toFixed(2)}%`} colorClass="text-red-600 dark:text-red-400" />
-                            <MetricCard label="Win Rate" value={`${backtestResult.metrics.winRate.toFixed(1)}%`} />
-                            <MetricCard label="Profit Factor" value={backtestResult.metrics.profitFactor.toFixed(2)} />
-                        </div>
-
-                        {/* Charts */}
-                        {indicators && (
-                            <PriceAndIndicatorCharts stockData={resampledData || dailyData!} indicators={indicators} backtestResult={backtestResult} theme={theme} />
-                        )}
-
-                        {/* Bottom Section: Signals & AI */}
-                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                            <SignalList signals={backtestResult.signals} />
-                            <div className="bg-slate-50 dark:bg-slate-800/50 p-4 sm:p-6 rounded-xl border border-slate-200 dark:border-slate-700">
-                                <h3 className="text-xl font-bold text-slate-700 dark:text-slate-200 mb-4 flex items-center gap-3"><BrainCircuitIcon /> Gemini AI Analysis Chat</h3>
-                                <GeminiChat 
-                                    backtestResult={backtestResult} 
-                                    benchmarkResult={benchmarkResult} 
-                                    strategyParams={strategyParams} 
-                                    onReset={() => {}} 
-                                />
+                        {!backtestResult || !benchmarkResult ? (
+                            <div className="bg-slate-50 dark:bg-slate-800/50 p-8 rounded-xl border border-slate-200 dark:border-slate-700 text-center">
+                                <div className="max-w-2xl mx-auto">
+                                    <h3 className="text-lg font-semibold text-slate-700 dark:text-slate-200">Ready to test your setup</h3>
+                                    <p className="mt-2 text-slate-500 dark:text-slate-400">
+                                        Your selected timeframe is <span className="font-semibold capitalize">{currentTimeframe}</span>. Click <span className="font-semibold">Run Backtest</span> to generate performance metrics, charts, trading signals, and the Gemini AI review.
+                                    </p>
+                                </div>
                             </div>
-                        </div>
+                        ) : (
+                            <>
+                                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+                                    <MetricCard label="Total Return" value={`${backtestResult.metrics.totalReturn.toFixed(2)}%`} colorClass={backtestResult.metrics.totalReturn >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'} />
+                                    <MetricCard label="CAGR" value={`${backtestResult.metrics.cagr.toFixed(2)}%`} />
+                                    <MetricCard label="Sharpe Ratio" value={backtestResult.metrics.sharpeRatio.toFixed(2)} />
+                                    <MetricCard label="Max Drawdown" value={`${backtestResult.metrics.maxDrawdown.toFixed(2)}%`} colorClass="text-red-600 dark:text-red-400" />
+                                    <MetricCard label="Win Rate" value={`${backtestResult.metrics.winRate.toFixed(1)}%`} />
+                                    <MetricCard label="Profit Factor" value={Number.isFinite(backtestResult.metrics.profitFactor) ? backtestResult.metrics.profitFactor.toFixed(2) : '∞'} />
+                                </div>
+
+                                {indicators && (
+                                    <PriceAndIndicatorCharts stockData={resampledData || dailyData!} indicators={indicators} backtestResult={backtestResult} />
+                                )}
+
+                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                                    <SignalList signals={backtestResult.signals} />
+                                    <div className="bg-slate-50 dark:bg-slate-800/50 p-4 sm:p-6 rounded-xl border border-slate-200 dark:border-slate-700">
+                                        <h3 className="text-xl font-bold text-slate-700 dark:text-slate-200 mb-4 flex items-center gap-3"><BrainCircuitIcon /> Gemini AI Analysis Chat</h3>
+                                        <GeminiChat 
+                                            backtestResult={backtestResult} 
+                                            benchmarkResult={benchmarkResult} 
+                                            strategyParams={strategyParams} 
+                                            onReset={() => {}} 
+                                        />
+                                    </div>
+                                </div>
+                            </>
+                        )}
                     </div>
                 )}
                 
@@ -748,7 +769,7 @@ function App() {
                                 <div className="bg-white dark:bg-slate-800 p-2 rounded-xl shadow-md border border-slate-200 dark:border-slate-700 h-[400px]">
                                     <h3 className="text-center font-semibold text-slate-700 dark:text-slate-200 mb-2">Optimization Heatmap</h3>
                                     {optimizationResult ? (
-                                        <HeatmapChart theme={theme} optimizationResult={optimizationResult} />
+                                        <HeatmapChart optimizationResult={optimizationResult} />
                                     ): (
                                         <div className="flex items-center justify-center h-full text-slate-400 dark:text-slate-500">Run optimization to see heatmap.</div>
                                     )}

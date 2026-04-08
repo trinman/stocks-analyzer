@@ -663,9 +663,15 @@ function App() {
                                         value={`${backtestResult.metrics.totalReturn.toFixed(2)}%`}
                                         colorClass={backtestResult.metrics.totalReturn >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}
                                     />
+                                    <MetricCard
+                                        label="Buy & Hold Return"
+                                        value={`${benchmarkResult.ret.toFixed(2)}%`}
+                                        colorClass={benchmarkResult.ret >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}
+                                    />
                                     <MetricCard label="Number of Trades" value={backtestResult.metrics.numTrades} />
                                     <MetricCard label="Time in Market" value={`${backtestResult.metrics.timeInMarketPct.toFixed(1)}%`} />
                                     <MetricCard label="CAGR" value={`${backtestResult.metrics.cagr.toFixed(2)}%`} />
+                                    <MetricCard label="Buy & Hold CAGR" value={`${benchmarkResult.cagr.toFixed(2)}%`} />
                                     <MetricCard label="Sharpe Ratio" value={backtestResult.metrics.sharpeRatio.toFixed(2)} />
                                     <MetricCard
                                         label="Max Drawdown"

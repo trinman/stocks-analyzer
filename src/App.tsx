@@ -651,13 +651,32 @@ function App() {
                             </div>
                         ) : (
                             <>
-                                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-                                    <MetricCard label="Total Return" value={`${backtestResult.metrics.totalReturn.toFixed(2)}%`} colorClass={backtestResult.metrics.totalReturn >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'} />
+                                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-4">
+                                    <MetricCard label="Initial Capital" value="$10,000" />
+                                    <MetricCard
+                                        label="Final Equity"
+                                        value={`$${backtestResult.metrics.finalEquity.toFixed(2)}`}
+                                        colorClass={backtestResult.metrics.finalEquity >= 10000 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}
+                                    />
+                                    <MetricCard
+                                        label="Total Return"
+                                        value={`${backtestResult.metrics.totalReturn.toFixed(2)}%`}
+                                        colorClass={backtestResult.metrics.totalReturn >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}
+                                    />
+                                    <MetricCard label="Number of Trades" value={backtestResult.metrics.numTrades} />
+                                    <MetricCard label="Time in Market" value={`${backtestResult.metrics.timeInMarketPct.toFixed(1)}%`} />
                                     <MetricCard label="CAGR" value={`${backtestResult.metrics.cagr.toFixed(2)}%`} />
                                     <MetricCard label="Sharpe Ratio" value={backtestResult.metrics.sharpeRatio.toFixed(2)} />
-                                    <MetricCard label="Max Drawdown" value={`${backtestResult.metrics.maxDrawdown.toFixed(2)}%`} colorClass="text-red-600 dark:text-red-400" />
+                                    <MetricCard
+                                        label="Max Drawdown"
+                                        value={`${backtestResult.metrics.maxDrawdown.toFixed(2)}%`}
+                                        colorClass="text-red-600 dark:text-red-400"
+                                    />
                                     <MetricCard label="Win Rate" value={`${backtestResult.metrics.winRate.toFixed(1)}%`} />
-                                    <MetricCard label="Profit Factor" value={Number.isFinite(backtestResult.metrics.profitFactor) ? backtestResult.metrics.profitFactor.toFixed(2) : '∞'} />
+                                    <MetricCard
+                                        label="Profit Factor"
+                                        value={Number.isFinite(backtestResult.metrics.profitFactor) ? backtestResult.metrics.profitFactor.toFixed(2) : '∞'}
+                                    />
                                 </div>
 
                                 {indicators && (

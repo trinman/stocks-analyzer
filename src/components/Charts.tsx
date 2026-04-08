@@ -1,5 +1,5 @@
-import React, { useEffect, useRef } from 'react';
-import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ComposedChart, Area, ReferenceLine, Scatter, Cell } from 'recharts';
+import React, { useEffect, useMemo, useRef } from 'react';
+import { Line, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ComposedChart, Area, ReferenceLine, ReferenceArea, Scatter, Cell } from 'recharts';
 import { BacktestResult, Indicators, StockData, OptimizationResult } from '../types.ts';
 
 interface PriceChartProps {
@@ -9,6 +9,19 @@ interface PriceChartProps {
 }
 
 export const PriceAndIndicatorCharts: React.FC<PriceChartProps> = ({ stockData, indicators, backtestResult }) => {
+  const firstReadyIndex = useMemo(() => {
+    return stockData.dates.findIndex((_, i) => (
+      indicators.bb.upper[i] != null &&
+      indicators.bb.middle[i] != null &&
+      indicators.bb.lower[i] != null &&
+      indicators.macd.MACD[i] != null &&
+      indicators.macd.signal[i] != null &&
+      indicators.rsi[i] != null
+    ));
+  }, [stockData, indicators]);
+
+  const warmupEndDate = firstReadyIndex > 0 ? stockData.dates[firstReadyIndex - 1] : null;
+
   const chartData = stockData.dates.map((date, i) => {
     const dataPoint: any = {
       date,
@@ -20,23 +33,23 @@ export const PriceAndIndicatorCharts: React.FC<PriceChartProps> = ({ stockData, 
       signal: indicators.macd.signal[i],
       histogram: indicators.macd.histogram[i],
       rsi: indicators.rsi[i],
+      inWarmup: firstReadyIndex !== -1 && i < firstReadyIndex,
     };
-    
-    // Merge trade data for scatter plot
+
     const tradeOnThisDate = backtestResult?.trades.find(t => t.date === date);
-    if (tradeOnThisDate) {
-        if (tradeOnThisDate.type === 'buy') {
-            dataPoint.buy = tradeOnThisDate.price;
-        } else {
-            dataPoint.sell = tradeOnThisDate.price;
-        }
+    if (tradeOnThisDate && !dataPoint.inWarmup) {
+      if (tradeOnThisDate.type === 'buy') {
+        dataPoint.buy = tradeOnThisDate.price;
+      } else {
+        dataPoint.sell = tradeOnThisDate.price;
+      }
     }
 
     return dataPoint;
   });
 
-
   return (
+
     <div className="space-y-6">
       <div className="p-5 bg-white rounded-xl shadow-sm border border-slate-200">
         <div className="flex justify-between items-center mb-6">
@@ -47,6 +60,9 @@ export const PriceAndIndicatorCharts: React.FC<PriceChartProps> = ({ stockData, 
             </div>
         </div>
         
+        {firstReadyIndex > 0 && (
+          <p className="mb-4 text-sm text-slate-500">Signals are hidden during the initial indicator warm-up period.</p>
+        )}
         <ResponsiveContainer width="100%" height={450}>
           <ComposedChart data={chartData} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
             <defs>
@@ -86,6 +102,9 @@ export const PriceAndIndicatorCharts: React.FC<PriceChartProps> = ({ stockData, 
               itemStyle={{ color: '#e2e8f0' }}
             />
             <Legend wrapperStyle={{fontSize: "12px", paddingTop: "10px"}} iconType="circle" />
+            {warmupEndDate && (
+              <ReferenceArea x1={chartData[0]?.date} x2={warmupEndDate} fill="#94a3b8" fillOpacity={0.08} ifOverflow="extendDomain" />
+            )}
             
             <Area type="monotone" dataKey="price" name="Price" yAxisId="left" stroke="#3b82f6" strokeWidth={2} fill="url(#colorPrice)" activeDot={{ r: 4, strokeWidth: 0 }} />
             <Line type="monotone" dataKey="upperBB" name="Upper BB" yAxisId="left" stroke="#94a3b8" dot={false} strokeWidth={1} strokeDasharray="4 4" opacity={0.5} />

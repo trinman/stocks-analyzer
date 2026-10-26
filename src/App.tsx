@@ -446,11 +446,11 @@ function App() {
                             <div>
                                 <h2 className="text-2xl font-bold text-slate-700 dark:text-slate-200">Backtest & AI Analysis</h2>
                                 <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-                                    Select a timeframe and run the strategy. Results, charts, and AI analysis will appear below.
+                                    Run the strategy configured in Strategy Setup. Results, charts, and AI analysis will appear below.
                                 </p>
                             </div>
                             <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 w-full lg:w-auto">
-                                <TimeframeSelector selected={currentTimeframe} onSelect={setCurrentTimeframe} />
+                                <p className="text-sm text-slate-600 dark:text-slate-300">Timeframe: <span className="font-semibold capitalize">{currentTimeframe}</span></p>
                                 <div className="flex items-center gap-2">
                                     <button onClick={handleRunBacktest} disabled={isLoading || !dailyData || setupInvalid || loadedSymbol !== stockSymbol.trim().toUpperCase()} className="flex items-center justify-center gap-2 bg-blue-600 text-white font-semibold px-6 py-3 rounded-lg hover:bg-blue-700 transition disabled:bg-slate-400 disabled:cursor-not-allowed whitespace-nowrap">
                                         <PlayIcon /> {isLoading ? 'Running...' : (backtestResult ? 'Re-Run Backtest' : 'Run Backtest')}

@@ -411,7 +411,7 @@ function App() {
                                            </label>
                                            <label className="block text-sm text-slate-600 dark:text-slate-400">Activation Mode:
                                                <select className="w-full p-1 border rounded dark:bg-slate-800 dark:border-slate-600 dark:text-slate-200" value={strategyParams.trailingStopActivation || 'ratchet'} onChange={e => setStrategyParams(p => ({...p, trailingStopActivation: e.target.value as 'ratchet' | 'immediate'}))}>
-                                                   <option value="ratchet">Ratchet (New Highs Only)</option>
+                                                   <option value="ratchet">High-water mark (never loosens)</option>
                                                    <option value="immediate">Close-based (never loosens)</option>
                                                </select>
                                            </label>
@@ -428,6 +428,7 @@ function App() {
                                <label className="block mt-2 text-sm text-slate-600 dark:text-slate-400">Take Profit (ATR×): <input className="w-full p-1 border rounded dark:bg-slate-800 dark:border-slate-600 dark:text-slate-200" type="number" step="0.1" value={strategyParams.takeProfitATR} onChange={e => setStrategyParams(p => ({...p, takeProfitATR: +e.target.value}))} /></label>
 
                                <label className="flex items-center gap-2 mt-4 text-slate-700 dark:text-slate-300"><input type="checkbox" checked={strategyParams.useMomentumEntry} onChange={e => setStrategyParams(p => ({...p, useMomentumEntry: e.target.checked}))} className="dark:bg-slate-900 dark:border-slate-600"/> Use Momentum Entry</label>
+                               <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">Momentum entry requires price above its SMA and RSI above 50, using the RSI period configured above. This RSI condition applies even when Use RSI is unchecked.</p>
                                <label className="block mt-2 text-sm text-slate-600 dark:text-slate-400">Momentum SMA Period: <input className="w-full p-1 border rounded dark:bg-slate-800 dark:border-slate-600 dark:text-slate-200" type="number" value={strategyParams.momentumSMAPeriod} onChange={e => setStrategyParams(p => ({...p, momentumSMAPeriod: +e.target.value}))} /></label>
                            </div>
                         </div>

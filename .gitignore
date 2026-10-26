@@ -69,3 +69,7 @@ dist-ssr/
 .idea
 .DS_Store
 *.suo
+
+
+# Netlify local state
+.netlify/

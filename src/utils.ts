@@ -9,10 +9,11 @@ export const parseRangeSpec = (spec: string, cap = 80): number[] => {
     let step = stepStr ? Number(stepStr) : (Number.isInteger(min) && Number.isInteger(max) ? 1 : 0.5);
     if (!isFinite(step) || step <= 0) step = 1;
     const out = [];
-    for (let v = min; v <= max + 1e-9 && out.length < cap; v += step) {
-        // toFixed helps with floating point inaccuracies
-        const precision = (String(step).split('.')[1] || '').length;
-        out.push(Number(v.toFixed(precision)));
+    if (Math.floor((max - min) / step + 1e-8) + 1 > cap) throw new Error(`Range exceeds ${cap} values. Use a larger step.`);
+    for (let i = 0; i < cap; i++) {
+        const v = min + i * step;
+        if (v > max + 1e-9) break;
+        out.push(Number(v.toFixed(8)));
     }
     return out;
 };

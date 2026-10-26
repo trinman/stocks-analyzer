@@ -1,5 +1,5 @@
-import React, { useEffect, useMemo, useRef } from 'react';
-import { Line, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ComposedChart, Area, ReferenceLine, ReferenceArea, Scatter, Cell } from 'recharts';
+import React, { useEffect, useRef } from 'react';
+import { Line, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ComposedChart, Area, ReferenceLine, Scatter, Cell } from 'recharts';
 import { BacktestResult, Indicators, StockData, OptimizationResult } from '../types.ts';
 
 interface PriceChartProps {
@@ -9,19 +9,6 @@ interface PriceChartProps {
 }
 
 export const PriceAndIndicatorCharts: React.FC<PriceChartProps> = ({ stockData, indicators, backtestResult }) => {
-  const firstReadyIndex = useMemo(() => {
-    return stockData.dates.findIndex((_, i) => (
-      indicators.bb.upper[i] != null &&
-      indicators.bb.middle[i] != null &&
-      indicators.bb.lower[i] != null &&
-      indicators.macd.MACD[i] != null &&
-      indicators.macd.signal[i] != null &&
-      indicators.rsi[i] != null
-    ));
-  }, [stockData, indicators]);
-
-  const warmupEndDate = firstReadyIndex > 0 ? stockData.dates[firstReadyIndex - 1] : null;
-
   const chartData = stockData.dates.map((date, i) => {
     const dataPoint: any = {
       date,
@@ -33,16 +20,11 @@ export const PriceAndIndicatorCharts: React.FC<PriceChartProps> = ({ stockData, 
       signal: indicators.macd.signal[i],
       histogram: indicators.macd.histogram[i],
       rsi: indicators.rsi[i],
-      inWarmup: firstReadyIndex !== -1 && i < firstReadyIndex,
+
     };
 
-    const tradeOnThisDate = backtestResult?.trades.find(t => t.date === date);
-    if (tradeOnThisDate && !dataPoint.inWarmup) {
-      if (tradeOnThisDate.type === 'buy') {
-        dataPoint.buy = tradeOnThisDate.price;
-      } else {
-        dataPoint.sell = tradeOnThisDate.price;
-      }
+    for (const trade of backtestResult?.trades.filter(t => t.date === date) ?? []) {
+      dataPoint[trade.type] = trade.price;
     }
 
     return dataPoint;
@@ -53,16 +35,13 @@ export const PriceAndIndicatorCharts: React.FC<PriceChartProps> = ({ stockData, 
     <div className="space-y-6">
       <div className="p-5 bg-white rounded-xl shadow-sm border border-slate-200">
         <div className="flex justify-between items-center mb-6">
-            <h3 className="text-lg font-bold text-slate-800">Price Action & Signals</h3>
+            <h3 className="text-lg font-bold text-slate-800">Price Action & Executed Trades</h3>
             <div className="flex gap-4 text-sm text-slate-500">
                 <div className="flex items-center gap-1"><span className="w-3 h-3 rounded-full bg-emerald-500"></span> Buy</div>
                 <div className="flex items-center gap-1"><span className="w-3 h-3 rounded-full bg-rose-500"></span> Sell</div>
             </div>
         </div>
         
-        {firstReadyIndex > 0 && (
-          <p className="mb-4 text-sm text-slate-500">Signals are hidden during the initial indicator warm-up period.</p>
-        )}
         <ResponsiveContainer width="100%" height={450}>
           <ComposedChart data={chartData} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
             <defs>
@@ -97,14 +76,11 @@ export const PriceAndIndicatorCharts: React.FC<PriceChartProps> = ({ stockData, 
                   }
                   return null;
               }}
-              labelFormatter={(label: string) => new Date(label).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}
+              labelFormatter={(label: React.ReactNode) => new Date(String(label)).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}
               contentStyle={{ backgroundColor: '#1e293b', color: '#f8fafc', borderRadius: '8px', border: 'none', fontSize: '12px', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)' }}
               itemStyle={{ color: '#e2e8f0' }}
             />
             <Legend wrapperStyle={{fontSize: "12px", paddingTop: "10px"}} iconType="circle" />
-            {warmupEndDate && (
-              <ReferenceArea x1={chartData[0]?.date} x2={warmupEndDate} fill="#94a3b8" fillOpacity={0.08} ifOverflow="extendDomain" />
-            )}
             
             <Area type="monotone" dataKey="price" name="Price" yAxisId="left" stroke="#3b82f6" strokeWidth={2} fill="url(#colorPrice)" activeDot={{ r: 4, strokeWidth: 0 }} />
             <Line type="monotone" dataKey="upperBB" name="Upper BB" yAxisId="left" stroke="#94a3b8" dot={false} strokeWidth={1} strokeDasharray="4 4" opacity={0.5} />
@@ -140,7 +116,7 @@ export const PriceAndIndicatorCharts: React.FC<PriceChartProps> = ({ stockData, 
             <YAxis yAxisId="right" orientation="left" tick={{ fontSize: 11, fill: '#64748b' }} domain={[0, 100]} axisLine={false} tickLine={false} />
             <Tooltip
               formatter={(value) => typeof value === 'number' ? value.toFixed(2) : value}
-              labelFormatter={(label: string) => new Date(label).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}
+              labelFormatter={(label: React.ReactNode) => new Date(String(label)).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}
               contentStyle={{ backgroundColor: '#1e293b', color: '#f8fafc', borderRadius: '8px', border: 'none', fontSize: '12px' }}
               itemStyle={{ color: '#e2e8f0' }}
             />
@@ -204,7 +180,7 @@ export const HeatmapChart: React.FC<HeatmapProps> = ({ optimizationResult }) => 
         const W = rect.width, H = rect.height;
 
         ctx.clearRect(0, 0, W, H);
-        const cols = xs.length, rows = Math.max(1, ys.length);
+        const cols = xs.length, rows = grid.length;
         const m = { left: 60, right: 20, top: 20, bottom: 75 };
         const plotW = W - m.left - m.right, plotH = H - m.top - m.bottom;
         if (!cols) return;
@@ -222,7 +198,7 @@ export const HeatmapChart: React.FC<HeatmapProps> = ({ optimizationResult }) => 
 
         for (let i = 0; i < cols; i++) {
             for (let j = 0; j < rows; j++) {
-                const v = grid[j][i];
+                const v = grid[j]?.[i];
                 if (v === null || !isFinite(v)) continue;
                 const t = (v - min) / (max - min || 1);
                 const x = m.left + i * cw;
@@ -295,3 +271,4 @@ export const HeatmapChart: React.FC<HeatmapProps> = ({ optimizationResult }) => 
         </div>
     );
 };
+

@@ -6,7 +6,8 @@ const infOr = (val: any, digits: number): string => (val === Infinity ? 'Infinit
 
 export const exportTradesCSV = (
     backtestResult: BacktestResult | null,
-    symbol: string
+    symbol: string,
+    commission: number
 ) => {
     if (!backtestResult) return;
     const { trades } = backtestResult;
@@ -21,7 +22,7 @@ export const exportTradesCSV = (
         if (t.type === 'buy') {
             lastBuy = { ...t, pair: ++pairId };
         } else if (t.type === 'sell' && lastBuy) {
-            const pnl = (t.price - lastBuy.price) * lastBuy.shares;
+            const pnl = (t.price - lastBuy.price) * lastBuy.shares - 2 * commission;
             paired.push({
                 pairId: lastBuy.pair,
                 entryDate: lastBuy.date,
@@ -29,7 +30,7 @@ export const exportTradesCSV = (
                 exitDate: t.date,
                 exitPrice: fN(t.price, 4),
                 shares: lastBuy.shares,
-                returnPct: fN(((t.price - lastBuy.price) / lastBuy.price) * 100, 4),
+                returnPct: fN((pnl / (lastBuy.price * lastBuy.shares + commission)) * 100, 4),
                 pnl: fN(pnl, 2),
                 exitReason: t.reason || ''
             });
@@ -63,10 +64,10 @@ export const exportSummaryCSV = (
         final_equity: fN(m.finalEquity, 2),
         total_return_pct: fN(m.totalReturn, 2),
         buy_hold_return_pct: fN(benchmark.ret, 2),
-        alpha_vs_bh_pct: fN(alpha, 2),
+        return_difference_vs_bh_pct: fN(alpha, 2),
         strategy_cagr_pct: fN(m.cagr, 2),
         benchmark_cagr_pct: fN(benchmark.cagr, 2),
-        alpha_annualized_pct: fN(alpha_cagr, 2),
+        cagr_difference_vs_bh_pct: fN(alpha_cagr, 2),
         sharpe: fN(m.sharpeRatio, 3),
         sortino: fN(m.sortinoRatio, 3),
         calmar: infOr(m.calmarRatio, 3),
@@ -80,6 +81,10 @@ export const exportSummaryCSV = (
         max_loss_streak: m.maxConsecLosses,
         risk_per_trade_pct: params.riskPct,
         stop_loss_atr: params.stopATR,
+        use_trailing_stop: params.useTrailingStop,
+        trailing_atr_multiplier: params.trailingATRMultiplier,
+        trailing_mode: params.trailingStopActivation,
+        allow_fractional_shares: params.allowFractionalShares,
         use_take_profit: params.useTakeProfit,
         take_profit_atr: params.useTakeProfit ? params.takeProfitATR : 'N/A',
         slippage_bps: params.slipBps,

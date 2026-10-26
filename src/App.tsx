@@ -1,31 +1,19 @@
-import React, { useState, useCallback, useMemo, ReactNode, useRef, useEffect } from 'react';
-import { AppStep, BacktestResult, Benchmark, Indicators, OptimizationResult, StockData, StrategyParameters, Timeframe, Signal } from './types.ts';
+import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
+import { AppStep, Benchmark, OptimizationResult, StockData, StrategyParameters, Timeframe, Signal } from './types.ts';
 import { calculateAllIndicators, runBacktest, runOptimization } from './services/tradingService.ts';
 import { fetchDailyData, resampleOHLC } from './services/apiServices.ts';
-import { getInitialAnalysis, createChatSession, getAnalysisPrompt } from './services/geminiService.ts';
-import { BrainCircuitIcon, ChartLineIcon, CogsIcon, DownloadIcon, PlayIcon, SearchIcon, SendIcon, MoonIcon, SunIcon } from './components/Icons.tsx';
+import { AnalysisChat } from './components/AnalysisChat.tsx';
+import { validateParameters, validateBacktest, requiredBars } from './services/validation.ts';
+import { createRunSnapshot, runMatches, type RunSnapshot } from './services/runSnapshot.ts';
+import { BrainCircuitIcon, ChartLineIcon, CogsIcon, DownloadIcon, PlayIcon, SearchIcon, MoonIcon, SunIcon } from './components/Icons.tsx';
 import { PriceAndIndicatorCharts, HeatmapChart } from './components/Charts.tsx';
 import { parseRangeSpec } from './utils.ts';
 import { exportTradesCSV, exportSummaryCSV } from './services/exportService.ts';
-import { Chat } from '@google/genai';
+
 
 
 // Default state for strategy parameters, updated with AI recommendations
-const defaultStrategyParams: StrategyParameters = {
-    useBB: true, useRSI: true, useMACD: true,
-    bbPeriod: 20, bbStd: 2,
-    rsiPeriod: 14, rsiOverbought: 70, rsiOversold: 30,
-    macdFast: 12, macdSlow: 26, macdSignal: 9,
-    riskPct: 1, stopATR: 2, commission: 0.5, slipBps: 5,
-    useTrailingStop: false, trailingATRMultiplier: 3.0, trailingStopActivation: 'ratchet',
-    useTrendFilter: true,
-    trendFilterPeriod: 200,
-    useTakeProfit: true,
-    takeProfitATR: 1.5,
-    useMomentumEntry: true,
-    momentumSMAPeriod: 50,
-    allowFractionalShares: false,
-};
+import { defaultStrategyParams } from './defaults.ts';
 
 const defaultOptimizationParams = {
     param1: 'rsi_period',
@@ -49,7 +37,7 @@ const WorkflowStepper: React.FC<{ currentStep: AppStep; setStep: (step: AppStep)
     return (
         <div className="flex justify-between items-center relative mb-8">
             <div className="absolute top-1/2 left-0 w-full h-0.5 bg-slate-300 dark:bg-slate-700 transform -translate-y-1/2 -z-10"></div>
-            {steps.map((step, index) => {
+            {steps.map((step) => {
                 const isActive = currentStep === step.id;
                 const isCompleted = currentStep > step.id;
                 return (
@@ -162,175 +150,6 @@ const SignalList: React.FC<{ signals: Signal[] }> = ({ signals }) => {
     );
 };
 
-// --- Gemini Chat Component (Refactored for Performance) ---
-
-interface GeminiChatProps {
-    backtestResult: BacktestResult;
-    benchmarkResult: Benchmark;
-    strategyParams: StrategyParameters;
-    onReset: () => void;
-}
-
-const GeminiChat: React.FC<GeminiChatProps> = ({ backtestResult, benchmarkResult, strategyParams, onReset }) => {
-    const [chatSession, setChatSession] = useState<Chat | null>(null);
-    const [initialAiPrompt, setInitialAiPrompt] = useState<string>('');
-    const [chatMessages, setChatMessages] = useState<{ role: 'user' | 'model', content: string }[]>([]);
-    const [chatInput, setChatInput] = useState<string>('');
-    const [isChatLoading, setIsChatLoading] = useState<boolean>(false);
-    const [error, setError] = useState<string | null>(null);
-    const chatHistoryRef = useRef<HTMLDivElement>(null);
-
-     useEffect(() => {
-        if (chatHistoryRef.current) {
-            chatHistoryRef.current.scrollTop = chatHistoryRef.current.scrollHeight;
-        }
-    }, [chatMessages, isChatLoading]);
-    
-    // This effect resets the chat when the parent indicates a reset is needed (e.g., new backtest run).
-    useEffect(() => {
-        setChatMessages([]);
-        setChatSession(null);
-        setIsChatLoading(false);
-        setChatInput('');
-    }, [backtestResult]);
-
-    const handleGetAIAnalysis = async () => {
-        setIsChatLoading(true);
-        setError(null);
-        try {
-            const prompt = getAnalysisPrompt(backtestResult.metrics, strategyParams, benchmarkResult);
-            setInitialAiPrompt(prompt);
-            const initialResponse = await getInitialAnalysis(backtestResult.metrics, strategyParams, benchmarkResult);
-            setChatSession(null); // Reset session, will be created on first follow-up
-            setChatMessages([{ role: 'model', content: initialResponse }]);
-        } catch (e) {
-            const errorMessage = "Failed to get AI analysis. The API key might be misconfigured or the service may be temporarily unavailable.";
-            setError(errorMessage);
-            setChatMessages([{ role: 'model', content: `Sorry, I was unable to generate an analysis. Please check the API key and try again. Error: ${(e as Error).message}` }]);
-            console.error(e);
-        } finally {
-            setIsChatLoading(false);
-        }
-    };
-
-    const handleSendChatMessage = async (e: React.FormEvent) => {
-        e.preventDefault();
-        if (!chatInput.trim() || isChatLoading || chatMessages.length === 0) return;
-    
-        const newUserMessage = { role: 'user' as const, content: chatInput };
-        setChatMessages(prev => [...prev, newUserMessage, { role: 'model', content: '' }]);
-        const currentChatInput = chatInput;
-        setChatInput('');
-        setIsChatLoading(true);
-    
-        try {
-            let session = chatSession;
-            if (!session) {
-                const firstModelMessage = chatMessages.find(m => m.role === 'model');
-                if (initialAiPrompt && firstModelMessage) {
-                    session = createChatSession(initialAiPrompt, firstModelMessage.content);
-                    setChatSession(session);
-                }
-            }
-    
-            if (!session) throw new Error("Chat session could not be initialized.");
-    
-            const responseStream = await session.sendMessageStream({ message: currentChatInput });
-    
-            for await (const chunk of responseStream) {
-                const chunkText = chunk.text;
-                setChatMessages(prev => {
-                    const lastIndex = prev.length - 1;
-                    const lastMessage = prev[lastIndex];
-                    if (lastMessage.role === 'model') {
-                        const updatedMessages = [...prev];
-                        updatedMessages[lastIndex] = { ...lastMessage, content: lastMessage.content + chunkText };
-                        return updatedMessages;
-                    }
-                    return prev;
-                });
-            }
-        } catch (err) {
-            console.error("Error sending chat message:", err);
-            const errorMessage = { role: 'model' as const, content: "Sorry, I encountered an error. Please try again." };
-            setChatMessages(prev => {
-                const lastIndex = prev.length - 1;
-                if (prev[lastIndex]?.role === 'model' && prev[lastIndex].content === '') {
-                     const updatedMessages = [...prev];
-                     updatedMessages[lastIndex] = errorMessage;
-                     return updatedMessages;
-                }
-                return [...prev, errorMessage];
-            });
-        } finally {
-            setIsChatLoading(false);
-        }
-    };
-
-    return (
-        <div className="flex flex-col h-[400px] bg-white dark:bg-slate-900 rounded-lg border dark:border-slate-700">
-            {chatMessages.length === 0 && !isChatLoading && (
-                <div className="flex flex-col items-center justify-center h-full text-center p-4">
-                    <div className="text-blue-600 dark:text-blue-400"><BrainCircuitIcon /></div>
-                    <h4 className="font-semibold mt-2 text-slate-700 dark:text-slate-200">Ready for AI Insights?</h4>
-                    <p className="text-sm text-slate-500 dark:text-slate-400 max-w-xs mt-1">
-                        Click the button to have Gemini analyze your backtest results and provide actionable suggestions.
-                    </p>
-                    <button
-                        onClick={handleGetAIAnalysis}
-                        className="mt-4 flex items-center justify-center gap-2 bg-blue-600 text-white font-semibold px-5 py-2 rounded-lg hover:bg-blue-700 transition disabled:bg-slate-400"
-                        disabled={isChatLoading}
-                    >
-                        <PlayIcon /> {isChatLoading ? 'Analyzing...' : 'Generate AI Analysis'}
-                    </button>
-                </div>
-            )}
-            {isChatLoading && chatMessages.length === 0 && (
-                <div className="flex items-center justify-center h-full text-slate-500 dark:text-slate-400">
-                    <div className="w-5 h-5 border-2 border-slate-300 border-t-blue-500 rounded-full animate-spin mr-3"></div>
-                    Generating initial analysis...
-                </div>
-            )}
-            {chatMessages.length > 0 && 
-                <div ref={chatHistoryRef} className="flex-1 p-4 space-y-4 overflow-y-auto">
-                    {chatMessages.map((msg, index) => (
-                        <div key={index} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                            <div className={`max-w-lg p-3 rounded-xl ${msg.role === 'user' ? 'bg-blue-500 text-white' : 'bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-slate-200'}`}>
-                                <div className="prose prose-sm dark:prose-invert max-w-none" dangerouslySetInnerHTML={{ __html: msg.content.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/(\r\n|\n|\r)/g, "<br />").replace(/• /g, "<br/>• ") }} />
-                            </div>
-                        </div>
-                    ))}
-                    {isChatLoading && chatMessages.length > 0 && (
-                        <div className="flex justify-start">
-                            <div className="max-w-lg p-3 rounded-xl bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-slate-200">
-                                <div className="flex items-center gap-2">
-                                    <div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce [animation-delay:-0.3s]"></div>
-                                    <div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce [animation-delay:-0.15s]"></div>
-                                    <div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce"></div>
-                                </div>
-                            </div>
-                        </div>
-                    )}
-                </div>
-            }
-            <form onSubmit={handleSendChatMessage} className="p-4 border-t dark:border-slate-700 flex items-center gap-2">
-                <input
-                    type="text"
-                    value={chatInput}
-                    onChange={(e) => setChatInput(e.target.value)}
-                    placeholder="Ask a follow-up question..."
-                    className="flex-grow p-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition disabled:bg-slate-100 dark:disabled:bg-slate-800/50"
-                    disabled={isChatLoading || chatMessages.length === 0}
-                    aria-label="Chat input"
-                />
-                <button type="submit" disabled={isChatLoading || chatMessages.length === 0 || !chatInput.trim()} className="p-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition disabled:bg-slate-400 disabled:cursor-not-allowed">
-                    <SendIcon />
-                </button>
-            </form>
-        </div>
-    );
-};
-
 // --- Main App Component ---
 
 function App() {
@@ -342,14 +161,28 @@ function App() {
     const [dailyData, setDailyData] = useState<StockData | null>(null);
     const [strategyParams, setStrategyParams] = useState<StrategyParameters>(defaultStrategyParams);
     
-    const [backtestResult, setBacktestResult] = useState<BacktestResult | null>(null);
-    const [benchmarkResult, setBenchmarkResult] = useState<Benchmark | null>(null);
+    const [run, setRun] = useState<RunSnapshot | null>(null);
+    const [loadedSymbol, setLoadedSymbol] = useState('');
     const [currentTimeframe, setCurrentTimeframe] = useState<Timeframe>('daily');
-    const [resampledData, setResampledData] = useState<StockData | null>(null);
+    const resampledData = useMemo(() => dailyData ? resampleOHLC(dailyData, currentTimeframe) : null, [dailyData, currentTimeframe]);
+    const runIsCurrent = runMatches(run, loadedSymbol, currentTimeframe, strategyParams) && loadedSymbol === stockSymbol.trim().toUpperCase();
+    const backtestResult = runIsCurrent ? run!.result : null;
+    const benchmarkResult = runIsCurrent ? run!.benchmark : null;
+    const parameterErrors = validateParameters(strategyParams);
+    const neededBars = parameterErrors.length ? 0 : requiredBars(strategyParams);
+    const historyError = resampledData && neededBars > resampledData.dates.length
+      ? `Only ${resampledData.dates.length} ${currentTimeframe} bars available; this setup needs at least ${neededBars}. Reduce indicator periods or choose a shorter timeframe.` : null;
+    const setupInvalid = parameterErrors.length > 0 || !!historyError;
+
 
     const [optimizationParams, setOptimizationParams] = useState(defaultOptimizationParams);
     const [optimizationResult, setOptimizationResult] = useState<OptimizationResult | null>(null);
     
+    const optimizationGeneration = useRef(0);
+    useEffect(() => { setRun(null); setOptimizationResult(null); optimizationGeneration.current++; }, [strategyParams, currentTimeframe, dailyData, stockSymbol]);
+
+    useEffect(() => { setOptimizationResult(null); optimizationGeneration.current++; }, [optimizationParams]);
+
     const [theme, setTheme] = useState<Theme>(() => {
         if (typeof window !== 'undefined' && window.localStorage) {
             const storedTheme = window.localStorage.getItem('theme') as Theme | null;
@@ -381,56 +214,41 @@ function App() {
         setIsLoading(true);
         setError(null);
         try {
-            const data = await fetchDailyData(stockSymbol.toUpperCase());
+            const symbol = stockSymbol.trim().toUpperCase();
+            const data = await fetchDailyData(symbol);
+            setLoadedSymbol(symbol);
             setDailyData(data);
-            setResampledData(null);
-            setBacktestResult(null);
-            setBenchmarkResult(null);
+            setRun(null);
             setOptimizationResult(null);
             setCurrentStep(AppStep.StrategySetup);
         } catch (err) {
             setError((err as Error).message);
             setDailyData(null);
+            setRun(null);
+            setOptimizationResult(null);
         } finally {
             setIsLoading(false);
         }
     }, [stockSymbol]);
 
-    const handleRunBacktest = useCallback(async () => {
-        if (!dailyData) {
-            setError('Please load market data first.');
-            return;
-        }
-        setIsLoading(true);
+    const handleRunBacktest = useCallback(() => {
+        if (!dailyData || loadedSymbol !== stockSymbol.trim().toUpperCase()) { setError('Load market data for the selected symbol first.'); return; }
         setError(null);
-        setBacktestResult(null);
-        
-        await new Promise(resolve => setTimeout(resolve, 50));
-        
-        const dataForBacktest = resampleOHLC(dailyData, currentTimeframe);
-        setResampledData(dataForBacktest);
-
-        const indicators = calculateAllIndicators(dataForBacktest, strategyParams);
-        const result = runBacktest(dataForBacktest, indicators, strategyParams, currentTimeframe);
-        setBacktestResult(result);
-
-        const { dates, c } = dataForBacktest;
-        const years = (dates.length > 1) ? (new Date(dates[dates.length - 1]).getTime() - new Date(dates[0]).getTime()) / (365.25 * 24 * 3600 * 1000) : 0;
-        const buyHoldTotalReturn = (c.length > 1) ? (c[c.length - 1] - c[0]) / c[0] : 0;
-        const benchmarkCagr = years > 0 ? (Math.pow(1 + buyHoldTotalReturn, 1 / years) - 1) * 100 : 0;
-
-        const benchmark: Benchmark = {
-            equity: c.map(price => 10000 * (price / (c[0] || 1))),
-            ret: buyHoldTotalReturn * 100,
-            cagr: benchmarkCagr,
-        };
-        setBenchmarkResult(benchmark);
-        setIsLoading(false);
-
-    }, [dailyData, strategyParams, currentTimeframe]);
+        setRun(null);
+        try {
+            const data = resampleOHLC(dailyData, currentTimeframe);
+            validateBacktest(data, strategyParams, currentTimeframe);
+            const indicators = calculateAllIndicators(data, strategyParams);
+            const result = runBacktest(data, indicators, strategyParams, currentTimeframe);
+            const years = (Date.parse(data.dates[data.dates.length - 1]) - Date.parse(data.dates[0])) / (365.25 * 24 * 3600 * 1000);
+            const ret = data.c[data.c.length - 1] / data.c[0] - 1;
+            const benchmark: Benchmark = { equity: data.c.map(price => 10000 * price / data.c[0]), ret: ret * 100, cagr: years > 0 ? (Math.pow(1 + ret, 1 / years) - 1) * 100 : 0 };
+            setRun(createRunSnapshot(loadedSymbol, currentTimeframe, data, strategyParams, result, benchmark));
+        } catch (err) { setError((err as Error).message); }
+    }, [dailyData, loadedSymbol, stockSymbol, strategyParams, currentTimeframe]);
 
     const handleRunOptimization = useCallback(async () => {
-        if (!dailyData) {
+        if (!dailyData || loadedSymbol !== stockSymbol.trim().toUpperCase()) {
             setError('Please load market data first.');
             return;
         }
@@ -438,11 +256,13 @@ function App() {
         setError(null);
         setOptimizationResult(null);
 
+        const generation = optimizationGeneration.current;
         await new Promise(resolve => setTimeout(resolve, 50));
+        if (generation !== optimizationGeneration.current) { setIsLoading(false); return; }
 
         try {
             const p1Range = parseRangeSpec(optimizationParams.range1);
-            const p2Range = parseRangeSpec(optimizationParams.range2);
+            const p2Range = optimizationParams.param2 === 'select' ? [] : parseRangeSpec(optimizationParams.range2);
             if(p1Range.length === 0) {
                 throw new Error("Invalid range specification for Parameter 1.");
             }
@@ -460,7 +280,7 @@ function App() {
             setOptimizationResult({
                 grid,
                 xs: p1Range,
-                ys: p2Range,
+                ys: optimizationParams.param2 === 'select' ? [0] : p2Range,
                 best: best,
                 param1: optimizationParams.param1,
                 param2: optimizationParams.param2
@@ -471,11 +291,11 @@ function App() {
         } finally {
             setIsLoading(false);
         }
-    }, [dailyData, strategyParams, optimizationParams, currentTimeframe]);
+    }, [dailyData, loadedSymbol, stockSymbol, strategyParams, optimizationParams, currentTimeframe]);
 
     const indicators = useMemo(() => {
         const data = resampledData || dailyData;
-        if (!data) return null;
+        if (!data || validateParameters(strategyParams).length) return null;
         return calculateAllIndicators(data, strategyParams);
     }, [resampledData, dailyData, strategyParams]);
 
@@ -506,6 +326,14 @@ function App() {
             
             <main className="bg-white dark:bg-slate-800 p-6 sm:p-8 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-700">
                 <WorkflowStepper currentStep={currentStep} setStep={setCurrentStep} />
+                {currentStep !== AppStep.MarketAnalysis && (
+                  <div className="mb-5 text-sm text-slate-600 dark:text-slate-300 space-y-2">
+                    <p>Periods count {currentTimeframe} bars. Signals use any enabled reversal indicator without an opposing reversal signal, or momentum entry; buys must pass the trend filter.</p>
+                    {parameterErrors.length > 0 && <ul role="alert" className="text-red-600 list-disc pl-5">{parameterErrors.map(message => <li key={message}>{message}</li>)}</ul>}
+                    {historyError && <p role="alert" className="text-amber-700 dark:text-amber-300">{historyError}</p>}
+                    {loadedSymbol !== stockSymbol.trim().toUpperCase() && <p role="alert">Load data for the selected symbol before running a backtest.</p>}
+                  </div>
+                )}
                 
                 {/* Step 1: Market Analysis */}
                 {currentStep === AppStep.MarketAnalysis && (
@@ -540,6 +368,7 @@ function App() {
                 {currentStep === AppStep.StrategySetup && (
                      <div className="animate-fade-in">
                         <h2 className="text-2xl font-bold text-slate-700 dark:text-slate-200 mb-4">Configure Strategy Parameters</h2>
+                        <div className="mb-4"><TimeframeSelector selected={currentTimeframe} onSelect={setCurrentTimeframe} /></div>
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
                             {/* Parameter sections here */}
                             <div className="bg-slate-50 dark:bg-slate-700/50 p-4 rounded-lg border dark:border-slate-700">
@@ -583,7 +412,7 @@ function App() {
                                            <label className="block text-sm text-slate-600 dark:text-slate-400">Activation Mode:
                                                <select className="w-full p-1 border rounded dark:bg-slate-800 dark:border-slate-600 dark:text-slate-200" value={strategyParams.trailingStopActivation || 'ratchet'} onChange={e => setStrategyParams(p => ({...p, trailingStopActivation: e.target.value as 'ratchet' | 'immediate'}))}>
                                                    <option value="ratchet">Ratchet (New Highs Only)</option>
-                                                   <option value="immediate">Immediate</option>
+                                                   <option value="immediate">Close-based (never loosens)</option>
                                                </select>
                                            </label>
                                        </div>
@@ -603,7 +432,7 @@ function App() {
                            </div>
                         </div>
                         <div className="mt-6 flex justify-end">
-                             <button onClick={() => setCurrentStep(AppStep.Backtest)} className="bg-blue-600 text-white font-semibold px-6 py-3 rounded-lg hover:bg-blue-700 transition">
+                             <button disabled={setupInvalid || !dailyData} onClick={() => setCurrentStep(AppStep.Backtest)} className="bg-blue-600 text-white font-semibold px-6 py-3 rounded-lg hover:bg-blue-700 transition">
                                 Proceed to Backtest &rarr;
                             </button>
                         </div>
@@ -623,15 +452,15 @@ function App() {
                             <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 w-full lg:w-auto">
                                 <TimeframeSelector selected={currentTimeframe} onSelect={setCurrentTimeframe} />
                                 <div className="flex items-center gap-2">
-                                    <button onClick={handleRunBacktest} disabled={isLoading || !dailyData} className="flex items-center justify-center gap-2 bg-blue-600 text-white font-semibold px-6 py-3 rounded-lg hover:bg-blue-700 transition disabled:bg-slate-400 disabled:cursor-not-allowed whitespace-nowrap">
+                                    <button onClick={handleRunBacktest} disabled={isLoading || !dailyData || setupInvalid || loadedSymbol !== stockSymbol.trim().toUpperCase()} className="flex items-center justify-center gap-2 bg-blue-600 text-white font-semibold px-6 py-3 rounded-lg hover:bg-blue-700 transition disabled:bg-slate-400 disabled:cursor-not-allowed whitespace-nowrap">
                                         <PlayIcon /> {isLoading ? 'Running...' : (backtestResult ? 'Re-Run Backtest' : 'Run Backtest')}
                                     </button>
                                     {backtestResult && benchmarkResult && (
                                         <>
-                                            <button onClick={() => exportTradesCSV(backtestResult, stockSymbol)} className="p-2 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg" title="Export Trades">
+                                            <button onClick={() => exportTradesCSV(backtestResult, run!.symbol, run!.params.commission)} className="p-2 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg" title="Export Trades">
                                                 <DownloadIcon />
                                             </button>
-                                            <button onClick={() => exportSummaryCSV(backtestResult, benchmarkResult, strategyParams, stockSymbol, currentTimeframe)} className="p-2 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg" title="Export Summary">
+                                            <button onClick={() => exportSummaryCSV(backtestResult, benchmarkResult, run!.params, run!.symbol, run!.timeframe)} className="p-2 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg" title="Export Summary">
                                                 <ChartLineIcon />
                                             </button>
                                         </>
@@ -645,12 +474,13 @@ function App() {
                                 <div className="max-w-2xl mx-auto">
                                     <h3 className="text-lg font-semibold text-slate-700 dark:text-slate-200">Ready to test your setup</h3>
                                     <p className="mt-2 text-slate-500 dark:text-slate-400">
-                                        Your selected timeframe is <span className="font-semibold capitalize">{currentTimeframe}</span>. Click <span className="font-semibold">Run Backtest</span> to generate performance metrics, charts, trading signals, and the Gemini AI review.
+                                        Your selected timeframe is <span className="font-semibold capitalize">{currentTimeframe}</span>. Click <span className="font-semibold">Run Backtest</span> to generate performance metrics, charts, trading signals, and the AI review (available on request).
                                     </p>
                                 </div>
                             </div>
                         ) : (
                             <>
+                                <p className="text-sm text-slate-500">{run!.symbol} · {run!.timeframe} · {run!.startDate} to {run!.endDate}. Entry-ATR stops and targets; stop-first for ambiguous bars. Drawdown uses closing equity. Buy &amp; hold excludes fees and dividends. Results include the warm-up interval.</p>
                                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-4">
                                     <MetricCard label="Initial Capital" value="$10,000" />
                                     <MetricCard
@@ -690,15 +520,10 @@ function App() {
                                 )}
 
                                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                                    <SignalList signals={backtestResult.signals} />
+                                    <div><p className="mb-2 text-sm text-slate-500">Signal prices are bar closes, not fills. Executed trades appear on the chart and in the trade export.</p><SignalList signals={backtestResult.signals} /></div>
                                     <div className="bg-slate-50 dark:bg-slate-800/50 p-4 sm:p-6 rounded-xl border border-slate-200 dark:border-slate-700">
-                                        <h3 className="text-xl font-bold text-slate-700 dark:text-slate-200 mb-4 flex items-center gap-3"><BrainCircuitIcon /> Gemini AI Analysis Chat</h3>
-                                        <GeminiChat 
-                                            backtestResult={backtestResult} 
-                                            benchmarkResult={benchmarkResult} 
-                                            strategyParams={strategyParams} 
-                                            onReset={() => {}} 
-                                        />
+                                        <h3 className="text-xl font-bold text-slate-700 dark:text-slate-200 mb-4 flex items-center gap-3"><BrainCircuitIcon /> OpenAI Analysis Chat</h3>
+                                        <AnalysisChat key={run!.id} run={run!} />
                                     </div>
                                 </div>
                             </>
@@ -715,6 +540,8 @@ function App() {
                                 <CogsIcon /> {isLoading ? 'Optimizing...' : 'Run Optimization'}
                             </button>
                         </div>
+                        <p className="mb-4 text-sm text-slate-500">Optimization ranks historical in-sample results, not future performance. Candidates need at least five completed trades. Validate selected settings on unseen data.</p>
+                        {optimizationResult && !optimizationResult.best && <p role="status" className="mb-4 text-amber-700">No eligible strategy found. Check indicator warm-up, parameter ranges, and the five-trade minimum.</p>}
                         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                             <div className="lg:col-span-1 bg-slate-50 dark:bg-slate-700/50 p-4 rounded-lg border dark:border-slate-700 space-y-4">
                                 <div>
@@ -783,6 +610,8 @@ function App() {
                                 {optimizationResult?.best && (
                                     <div className="bg-slate-50 dark:bg-slate-700/50 p-4 rounded-lg border dark:border-slate-700">
                                         <h3 className="font-bold text-slate-600 dark:text-slate-300 mb-2">Best Parameters Found</h3>
+                                        <p className="text-sm mb-3">{Object.entries(optimizationResult.best.params).map(([key, value]) => `${key}: ${value}`).join(' · ')}</p>
+                                        <button className="mb-3 px-3 py-2 bg-blue-600 text-white rounded" onClick={() => { setStrategyParams(p => ({ ...p, ...optimizationResult.best!.params })); setCurrentStep(AppStep.StrategySetup); }}>Apply parameters to setup</button>
                                         <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-center">
                                             <MetricCard label="Best Score" value={optimizationResult.best.score.toFixed(3)} colorClass="text-purple-600 dark:text-purple-400" />
                                             <MetricCard label="Sharpe" value={optimizationResult.best.bt.metrics.sharpeRatio.toFixed(3)} />
@@ -809,3 +638,4 @@ function App() {
 }
 
 export default App;
+

@@ -326,6 +326,14 @@ function App() {
             
             <main className="bg-white dark:bg-slate-800 p-6 sm:p-8 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-700">
                 <WorkflowStepper currentStep={currentStep} setStep={setCurrentStep} />
+                <h2 className="text-2xl font-bold text-slate-700 dark:text-slate-200 mb-4">
+                    {{
+                        [AppStep.MarketAnalysis]: 'Load Market Data',
+                        [AppStep.StrategySetup]: 'Configure Strategy Parameters',
+                        [AppStep.Backtest]: 'Backtest & AI Analysis',
+                        [AppStep.Optimization]: 'Strategy Optimization',
+                    }[currentStep]}
+                </h2>
                 {currentStep !== AppStep.MarketAnalysis && (
                   <div className="mb-5 text-sm text-slate-600 dark:text-slate-300 space-y-2">
                     <p>Periods count {currentTimeframe} bars. Signals use any enabled reversal indicator without an opposing reversal signal, or momentum entry; buys must pass the trend filter.</p>
@@ -338,7 +346,6 @@ function App() {
                 {/* Step 1: Market Analysis */}
                 {currentStep === AppStep.MarketAnalysis && (
                     <div className="animate-fade-in">
-                        <h2 className="text-2xl font-bold text-slate-700 dark:text-slate-200 mb-4">Load Market Data</h2>
                         <form onSubmit={(e) => { e.preventDefault(); handleLoadData(); }} className="flex flex-col sm:flex-row gap-4">
                             <input
                                 type="text"
@@ -367,7 +374,6 @@ function App() {
                 {/* Step 2: Strategy Setup */}
                 {currentStep === AppStep.StrategySetup && (
                      <div className="animate-fade-in">
-                        <h2 className="text-2xl font-bold text-slate-700 dark:text-slate-200 mb-4">Configure Strategy Parameters</h2>
                         <div className="mb-4"><TimeframeSelector selected={currentTimeframe} onSelect={setCurrentTimeframe} /></div>
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
                             {/* Parameter sections here */}
@@ -445,7 +451,6 @@ function App() {
                     <div className="animate-fade-in space-y-6">
                         <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
                             <div>
-                                <h2 className="text-2xl font-bold text-slate-700 dark:text-slate-200">Backtest & AI Analysis</h2>
                                 <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
                                     Run the strategy configured in Strategy Setup. Results, charts, and AI analysis will appear below.
                                 </p>
@@ -536,7 +541,6 @@ function App() {
                 {currentStep === AppStep.Optimization && (
                     <div className="animate-fade-in">
                         <div className="flex justify-between items-center mb-4">
-                            <h2 className="text-2xl font-bold text-slate-700 dark:text-slate-200">Strategy Optimization</h2>
                              <button onClick={handleRunOptimization} disabled={isLoading} className="flex items-center justify-center gap-2 bg-purple-600 text-white font-semibold px-6 py-3 rounded-lg hover:bg-purple-700 transition disabled:bg-slate-400">
                                 <CogsIcon /> {isLoading ? 'Optimizing...' : 'Run Optimization'}
                             </button>

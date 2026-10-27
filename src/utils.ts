@@ -1,13 +1,13 @@
 export const parseRangeSpec = (spec: string, cap = 80): number[] => {
     if (!spec) return [];
     const clean = spec.replace(/\s+/g, '');
-    const [range, stepStr] = clean.split(':');
-    if (!range) return [];
-    let [min, max] = range.split('-').map(Number);
-    if (!isFinite(min) || !isFinite(max)) return [];
+    const match = clean.match(/^(\d+(?:\.\d+)?|\.\d+)-(\d+(?:\.\d+)?|\.\d+)(?::(.+))?$/);
+    if (!match) throw new Error('Use min-max:step, for example 7-21:1.');
+    let min = Number(match[1]), max = Number(match[2]);
+    if (!Number.isFinite(min) || !Number.isFinite(max)) throw new Error('Range limits must be finite numbers.');
     if (min > max) [min, max] = [max, min];
-    let step = stepStr ? Number(stepStr) : (Number.isInteger(min) && Number.isInteger(max) ? 1 : 0.5);
-    if (!isFinite(step) || step <= 0) step = 1;
+    const step = match[3] === undefined ? (Number.isInteger(min) && Number.isInteger(max) ? 1 : 0.5) : Number(match[3]);
+    if (!Number.isFinite(step) || step <= 0) throw new Error('Range step must be a finite number greater than zero.');
     const out = [];
     if (Math.floor((max - min) / step + 1e-8) + 1 > cap) throw new Error(`Range exceeds ${cap} values. Use a larger step.`);
     for (let i = 0; i < cap; i++) {

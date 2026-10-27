@@ -425,6 +425,14 @@ export const runOptimization = (
   if (errors.length) throw new Error(errors.join(' '));
   if (!paramKeyMap[p1Key] || (p2Key !== 'select' && !paramKeyMap[p2Key])) throw new Error('Choose valid optimization parameters.');
   if (p1Key === p2Key) throw new Error('Choose different optimization parameters.');
+  for (const key of [p1Key, p2Key]) {
+    if (key.startsWith('bb_') && !baseParams.useBB) throw new Error('Enable Bollinger Bands in Strategy Setup before optimizing its parameters.');
+    if (key.startsWith('macd_') && !baseParams.useMACD) throw new Error('Enable MACD in Strategy Setup before optimizing its parameters.');
+    if (key === 'rsi_period' && !baseParams.useRSI && !baseParams.useMomentumEntry) throw new Error('Enable RSI or Momentum Entry in Strategy Setup before optimizing the RSI period.');
+    if (['rsi_oversold', 'rsi_overbought'].includes(key) && !baseParams.useRSI) throw new Error('Enable RSI in Strategy Setup before optimizing its thresholds.');
+    if (key === 'trailing_atr_multiplier' && !baseParams.useTrailingStop) throw new Error('Enable Trailing Stop in Strategy Setup before optimizing its multiplier.');
+  }
+
   if (!p1Range.length || (p2Key !== 'select' && !p2Range.length) || p1Range.length * Math.max(1, p2Range.length) > 6400) throw new Error('Provide valid ranges with at most 6,400 combinations.');
   let best: { score: number; params: Partial<StrategyParameters>; bt: BacktestResult } | null = null;
 

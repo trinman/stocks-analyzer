@@ -541,7 +541,7 @@ function App() {
                                 <CogsIcon /> {isLoading ? 'Optimizing...' : 'Run Optimization'}
                             </button>
                         </div>
-                        <p className="mb-4 text-sm text-slate-500">Optimization ranks historical in-sample results, not future performance. Candidates need at least five completed trades. Validate selected settings on unseen data.</p>
+                        <p className="mb-4 text-sm text-slate-500">Optimization ranks historical in-sample results, not future performance. Enable the corresponding feature in Strategy Setup before optimizing its parameters. Candidates need at least five completed trades. Validate selected settings on unseen data.</p>
                         {optimizationResult && !optimizationResult.best && <p role="status" className="mb-4 text-amber-700">No eligible strategy found. Check indicator warm-up, parameter ranges, and the five-trade minimum.</p>}
                         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                             <div className="lg:col-span-1 bg-slate-50 dark:bg-slate-700/50 p-4 rounded-lg border dark:border-slate-700 space-y-4">
@@ -601,7 +601,7 @@ function App() {
                                     <select id="metric-select" value={optimizationParams.metric} onChange={e => setOptimizationParams(p => ({...p, metric: e.target.value}))} className="w-full p-2 border rounded mt-1 dark:bg-slate-800 dark:border-slate-600 dark:text-slate-200">
                                         <option value="sharpe">Sharpe Ratio</option>
                                         <option value="cagr">CAGR</option>
-                                        <option value="alpha_cagr">Alpha vs B&H (CAGR)</option>
+                                        <option value="alpha_cagr">CAGR difference vs buy-and-hold</option>
                                         <option value="win_rate">Win Rate</option>
                                         <option value="max_drawdown">Max Drawdown (Min)</option>
                                     </select>

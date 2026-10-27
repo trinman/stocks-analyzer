@@ -86,3 +86,21 @@ test('weekly resampling preserves open/high/low/close/volume',()=>{
 test('ranges retain decimal precision and reject silent truncation',()=>{
   assert.deepEqual(parseRangeSpec('0.25-1.25:1'),[0.25,1.25]);assert.throws(()=>parseRangeSpec('1-100:1'),/exceeds/);
 });
+
+
+test('range steps reject zero, negative, nonfinite and malformed input', () => {
+  for (const value of ['7-21:0', '7-21:-1', '7-21:NaN', '7-21:Infinity', '7-21:1:2', '7-21:', '7-21-30:1']) assert.throws(() => parseRangeSpec(value));
+  assert.deepEqual(parseRangeSpec('7-9'), [7,8,9]);
+  assert.deepEqual(parseRangeSpec('1-1.5:0.25'), [1,1.25,1.5]);
+});
+test('optimization rejects disabled features on either axis, preserving momentum RSI dependency', () => {
+  const {data} = fixture(60);
+  for (const key of ['bb_period','bb_std','macd_fast','macd_slow','macd_signal','trailing_atr_multiplier']) {
+    assert.throws(() => runOptimization(data,base,key,[2,3],'select',[],'sharpe','daily'), /Enable/);
+    assert.throws(() => runOptimization(data,base,'rsi_period',[7],key,[2,3],'sharpe','daily'), /Enable/);
+  }
+  const momentum = {...base,useRSI:false,useMomentumEntry:true};
+  assert.doesNotThrow(() => runOptimization(data,momentum,'rsi_period',[7],'select',[],'sharpe','daily'));
+  for (const key of ['rsi_oversold','rsi_overbought']) assert.throws(() => runOptimization(data,momentum,key,[20],'select',[],'sharpe','daily'), /Enable RSI/);
+  assert.doesNotThrow(() => runOptimization(data,{...base,useTrailingStop:true},'trailing_atr_multiplier',[2],'select',[],'sharpe','daily'));
+});

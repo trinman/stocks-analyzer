@@ -40,7 +40,7 @@ const WorkflowStepper: React.FC<{ currentStep: AppStep; setStep: (step: AppStep)
         { id: AppStep.Validation, label: 'Validation' },
     ];
     return (
-        <div className="flex justify-between items-start gap-3 relative mb-8 overflow-x-auto pb-2" aria-label="Workflow">
+        <div className="flex justify-between items-start gap-3 relative mb-8 overflow-x-auto py-2" aria-label="Workflow">
             <div className="absolute top-1/2 left-0 w-full h-0.5 bg-slate-300 dark:bg-slate-700 transform -translate-y-1/2 -z-10"></div>
             {steps.map((step) => {
                 const isActive = currentStep === step.id;
@@ -348,7 +348,7 @@ function App() {
                 </div>
             )}
             
-            <main className="bg-white dark:bg-slate-800 p-6 sm:p-8 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-700">
+            <main className="[&_p]:leading-relaxed [&_li]:leading-relaxed bg-white dark:bg-slate-800 p-6 sm:p-8 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-700">
                 {storageWarning && <p role="alert" className="text-amber-700 mb-4">{storageWarning}</p>}
                 <WorkflowStepper currentStep={currentStep} setStep={setCurrentStep} />
                 <h2 className="text-2xl font-bold text-slate-700 dark:text-slate-200 mb-4">

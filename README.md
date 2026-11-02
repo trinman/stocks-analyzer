@@ -83,7 +83,7 @@ records persist locally. Revisiting the same dates is not a fresh unseen test.
 - All periods count selected-timeframe bars. Today is excluded. Without an exchange calendar,
   the first and last weekly/monthly aggregates are conservatively excluded, even if complete.
   The requested split aligns forward to the next available interval opening. The actual
-  dates are displayed before confirmation. No aggregate crosses the actual split.
+  dates are displayed before continuing. No aggregate crosses the actual split.
 - Open fills in validation use the first session of an interval. Intrabar stop/target dates
   use the last session because OHLC data cannot establish their actual intrabar timing.
   Equity and risk metrics remain sampled at the selected bar frequency, not daily for all modes.

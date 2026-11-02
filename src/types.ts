@@ -1,4 +1,6 @@
 export interface StockData {
+  /** Actual first session of an aggregated bar; dates contains its final session. */
+  openDates?: string[];
   dates: string[];
   o: number[];
   h: number[];
@@ -75,6 +77,8 @@ export interface BacktestMetrics {
   numTrades: number;
   timeInMarketPct: number;
   maxConsecLosses: number;
+  maxDrawdownDurationDays: number;
+  turnoverPct: number;
 }
 
 export interface BacktestResult {
@@ -109,6 +113,8 @@ export enum AppStep {
     StrategySetup = 2,
     Backtest = 3,
     Optimization = 4,
+    Validation = 5,
 }
 
 export type Timeframe = 'daily' | 'weekly' | 'monthly';
+

@@ -47,3 +47,64 @@ Netlify Functions enforce per-IP/domain limits (market data: 20 requests/minute;
 6. Verify deployed assets contain no API credentials; confirm both functions deployed and provider errors are sanitized.
 
 Do not promote until the preview passes and production function variables are configured. If a released change needs reversal, revert the commit and deploy that correction.
+
+## Chronological holdout validation
+
+Validation is integrated into the existing five-tab workflow. The existing strategy controls,
+backtest cards/charts/AI, and optimization grid are shared; there is no second setup form.
+
+1. **Market Analysis:** load data, optionally enable **Reserve data for validation**, and set
+   the split, fixed development warm-up budget, and prior-exposure declaration. The suggested
+   split is 60%/40% of the loaded calendar range, not a sufficiency guarantee. Loading stays on
+   this screen so the reservation can be chosen before continuing. The live overview chart
+   is hidden while reservation is enabled; earlier chart viewing cannot be undone.
+2. **Strategy Setup:** configure parameters and timeframe as before. Changing timeframe resets
+   the default warm-up budget and recalculates the split; dates/bars are shown in the summary.
+3. **Backtest & AI:** run the current setup. With reservation enabled, only development data
+   is used for metrics, charts, signals, and AI. Warm-up initializes indicators but is excluded
+   from performance. Continue straight to Validation or optionally optimize first.
+4. **Optimization (optional):** search development data only when reserved, using fixed scoring
+   dates. Candidates exceeding the warm-up budget are skipped. Five trades is an eligibility
+   rule, not proof of reliability. Searches, objectives, ranges, and trial counts are retained.
+   Apply the chosen parameters to Strategy Setup and rerun Backtest before locking them.
+5. **Validation:** review the current strategy, lock it, then explicitly **Run Validation**.
+   Each period starts independently with $10,000 cash. The preceding completed bar may generate
+   a signal filled at the first scoring open. Compare results/benchmarks and export JSON/CSV.
+   Optional AI review receives evaluation evidence plus development summary, only on request.
+
+Without reservation, the existing full-history backtest and optimization remain available and
+are labeled **Full history**. Invalid reservation settings block runs instead of falling back
+to full history. Changing parameters, periods, data, or starting a new experiment invalidates
+the current lock/results; tab navigation alone preserves them. Saved evaluations and exposure
+records persist locally. Revisiting the same dates is not a fresh unseen test.
+
+### Boundaries and limitations
+
+- All periods count selected-timeframe bars. Today is excluded. Without an exchange calendar,
+  the first and last weekly/monthly aggregates are conservatively excluded, even if complete.
+  The requested split aligns forward to the next available interval opening. The actual
+  dates are displayed before continuing. No aggregate crosses the actual split.
+- Open fills in validation use the first session of an interval. Intrabar stop/target dates
+  use the last session because OHLC data cannot establish their actual intrabar timing.
+  Equity and risk metrics remain sampled at the selected bar frequency, not daily for all modes.
+- Both strategy and benchmark begin at the scoring window's first open. The benchmark uses
+  fractional price-only buy-and-hold without fees or dividends. Strategy costs are included.
+  Corporate-action adjustment is not independently verified. End-of-window liquidation costs
+  are included. Turnover is gross traded notional divided by starting capital.
+- Sparse-trade warnings use 20 completed trades as a caution threshold, not an acceptance test.
+  Undefined ratios display N/A. Drawdown duration includes ongoing unrecovered drawdowns.
+- Browser storage records exposures before evaluation and also records full-history exploration
+  and development. Overlap checks ignore parameter, timeframe, and data-fingerprint changes.
+  Existing research before this feature, other devices, cleared storage, and manual tampering
+  cannot be detected. “First recorded here” never means certified unseen data. Default prior
+  knowledge is unknown/retrospective. Storage errors are visible and exports remain available.
+- The application downloads the full price history to the browser. Hiding evaluation results is
+  a research-workflow safeguard, not a server-enforced data embargo. Records are local to the
+  site origin/browser, including separate records for preview and production.
+- Walk-forward portfolios, short selling, FRED, and daily valuation of weekly/monthly strategies
+  are not part of this release. Changing an experiment starts a new setup; revealed dates stay
+  in local exposure history. No automatic pass/fail claim is made from Sharpe or WFE thresholds.
+
+Run `npm test` and `npm run build`. Holdout tests cover future-price perturbations,
+fixed scoring windows, cash starts, cost reconciliation, warm-up, aggregation boundaries,
+locked snapshots, benchmark alignment, local history/reuse, and mocked AI requests.

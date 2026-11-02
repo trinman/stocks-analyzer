@@ -113,6 +113,7 @@ export enum AppStep {
     StrategySetup = 2,
     Backtest = 3,
     Optimization = 4,
+    Validation = 5,
 }
 
 export type Timeframe = 'daily' | 'weekly' | 'monthly';

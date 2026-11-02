@@ -4,6 +4,7 @@ import { calculateAllIndicators, runBacktest, runOptimization } from './services
 import { fetchDailyData, resampleOHLC } from './services/apiServices.ts';
 import { StrategyControls } from './components/StrategyControls.tsx';
 import { HoldoutValidation } from './components/HoldoutValidation.tsx';
+import { makeHoldoutPlan, sliceData, runDevelopment, optimizeDevelopment, type SearchRecord, type LockedHoldout } from './services/holdoutService.ts';
 import { recordExposure } from './services/validationHistory.ts';
 import { AnalysisChat } from './components/AnalysisChat.tsx';
 import { validateParameters, validateBacktest, requiredBars } from './services/validation.ts';
@@ -36,23 +37,23 @@ const WorkflowStepper: React.FC<{ currentStep: AppStep; setStep: (step: AppStep)
         { id: AppStep.StrategySetup, label: 'Strategy Setup' },
         { id: AppStep.Backtest, label: 'Backtest & AI' },
         { id: AppStep.Optimization, label: 'Optimization' },
+        { id: AppStep.Validation, label: 'Validation' },
     ];
     return (
-        <div className="flex justify-between items-center relative mb-8">
+        <div className="flex justify-between items-start gap-3 relative mb-8 overflow-x-auto pb-2" aria-label="Workflow">
             <div className="absolute top-1/2 left-0 w-full h-0.5 bg-slate-300 dark:bg-slate-700 transform -translate-y-1/2 -z-10"></div>
             {steps.map((step) => {
                 const isActive = currentStep === step.id;
-                const isCompleted = currentStep > step.id;
+                // Navigation order is not proof that a step was completed.
                 return (
-                    <div key={step.id} className="flex flex-col items-center cursor-pointer group" onClick={() => setStep(step.id)}>
+                    <button type="button" key={step.id} aria-current={isActive ? 'step' : undefined} className="flex flex-1 flex-col items-center min-w-[86px] group" onClick={() => setStep(step.id)}>
                         <div className={`w-10 h-10 rounded-full flex items-center justify-center border-2 transition-all duration-300
                             ${isActive ? 'bg-blue-600 border-blue-600 text-white scale-110' :
-                             isCompleted ? 'bg-green-500 border-green-500 text-white' :
                              'bg-white dark:bg-slate-700 border-slate-300 dark:border-slate-600 text-slate-500 dark:text-slate-400 group-hover:border-blue-400'}`}>
-                            {isCompleted ? '✓' : step.id}
+                            {step.id}
                         </div>
                         <span className={`mt-2 text-sm font-medium transition-colors duration-300 ${isActive ? 'text-blue-600 dark:text-blue-400' : 'text-slate-500 dark:text-slate-400'}`}>{step.label}</span>
-                    </div>
+                    </button>
                 );
             })}
         </div>
@@ -138,7 +139,13 @@ const SignalList: React.FC<{ signals: Signal[] }> = ({ signals }) => {
 // --- Main App Component ---
 
 function App() {
-    const [mode, setMode] = useState<'exploration' | 'validation'>('exploration');
+    const [reserveEvaluation, setReserveEvaluation] = useState(false);
+    const [splitDate, setSplitDate] = useState('');
+    const [warmup, setWarmup] = useState(200);
+    const [prior, setPrior] = useState<LockedHoldout['priorKnowledge']>('unknown');
+    const [searches, setSearches] = useState<SearchRecord[]>([]);
+    const [experimentVersion, setExperimentVersion] = useState(0);
+    const [asOf] = useState(() => new Date().toISOString().slice(0,10));
     const [storageWarning, setStorageWarning] = useState('');
     const [currentStep, setCurrentStep] = useState<AppStep>(AppStep.MarketAnalysis);
     const [stockSymbol, setStockSymbol] = useState<string>('AAPL');
@@ -151,7 +158,16 @@ function App() {
     const [run, setRun] = useState<RunSnapshot | null>(null);
     const [loadedSymbol, setLoadedSymbol] = useState('');
     const [currentTimeframe, setCurrentTimeframe] = useState<Timeframe>('daily');
-    const resampledData = useMemo(() => dailyData ? resampleOHLC(dailyData, currentTimeframe) : null, [dailyData, currentTimeframe]);
+    const reservation = useMemo(() => {
+        if (!reserveEvaluation || !dailyData) return {plan: null, error: ''};
+        try { return {plan: makeHoldoutPlan(dailyData, currentTimeframe, splitDate, warmup, asOf), error: ''}; }
+        catch (e) { return {plan: null, error: (e as Error).message}; }
+    }, [reserveEvaluation, dailyData, currentTimeframe, splitDate, warmup, asOf]);
+    const plan = reservation.plan;
+    // Never fall back to full history when reservation is enabled but invalid.
+    const resampledData = useMemo(() => reserveEvaluation
+        ? (plan ? sliceData(plan.data, 0, plan.splitIndex) : null)
+        : (dailyData ? resampleOHLC(dailyData, currentTimeframe) : null), [dailyData, currentTimeframe, reserveEvaluation, plan]);
     const runIsCurrent = runMatches(run, loadedSymbol, currentTimeframe, strategyParams) && loadedSymbol === stockSymbol.trim().toUpperCase();
     const backtestResult = runIsCurrent ? run!.result : null;
     const benchmarkResult = runIsCurrent ? run!.benchmark : null;
@@ -159,16 +175,20 @@ function App() {
     const neededBars = parameterErrors.length ? 0 : requiredBars(strategyParams);
     const historyError = resampledData && neededBars > resampledData.dates.length
       ? `Only ${resampledData.dates.length} ${currentTimeframe} bars available; this setup needs at least ${neededBars}. Reduce indicator periods or choose a shorter timeframe.` : null;
-    const setupInvalid = parameterErrors.length > 0 || !!historyError;
+    const warmupError = plan && neededBars - 1 > plan.warmupBars
+        ? `This setup needs ${neededBars - 1} warm-up bars. Increase the budget in Market Analysis or shorten indicator periods.` : null;
+    const setupInvalid = parameterErrors.length > 0 || !!historyError || !!warmupError || (reserveEvaluation && !plan);
 
 
     const [optimizationParams, setOptimizationParams] = useState(defaultOptimizationParams);
     const [optimizationResult, setOptimizationResult] = useState<OptimizationResult | null>(null);
     
     const optimizationGeneration = useRef(0);
-    useEffect(() => { setRun(null); setOptimizationResult(null); optimizationGeneration.current++; }, [strategyParams, currentTimeframe, dailyData, stockSymbol]);
+    useEffect(() => { setRun(null); setOptimizationResult(null); optimizationGeneration.current++; }, [strategyParams, currentTimeframe, dailyData, stockSymbol, plan, reserveEvaluation, experimentVersion]);
 
     useEffect(() => { setOptimizationResult(null); optimizationGeneration.current++; }, [optimizationParams]);
+    useEffect(() => { setSearches([]); }, [plan, reserveEvaluation, experimentVersion]);
+    useEffect(() => { setError(null); }, [currentStep]);
 
     const [theme, setTheme] = useState<Theme>(() => {
         if (typeof window !== 'undefined' && window.localStorage) {
@@ -207,7 +227,9 @@ function App() {
             setDailyData(data);
             setRun(null);
             setOptimizationResult(null);
-            setCurrentStep(AppStep.StrategySetup);
+            const start = Date.parse(data.dates[0]), end = Date.parse(data.dates.at(-1)!);
+            setSplitDate(new Date(start + .6 * (end - start)).toISOString().slice(0,10));
+            setExperimentVersion(v => v + 1);
         } catch (err) {
             setError((err as Error).message);
             setDailyData(null);
@@ -223,6 +245,14 @@ function App() {
         setError(null);
         setRun(null);
         try {
+            if (reserveEvaluation) {
+                if (!plan) throw new Error(reservation.error || 'Choose valid validation dates in Market Analysis.');
+                const result = runDevelopment(loadedSymbol, plan, strategyParams);
+                try { recordExposure(localStorage, {symbol: loadedSymbol, start: plan.data.openDates![0], end: plan.developmentEnd, recordedAt: new Date().toISOString(), source: 'development'}); }
+                catch { setStorageWarning('Browser exposure history could not be saved. Treat later validation as prior exposure unknown.'); }
+                setRun(result);
+                return;
+            }
             const data = resampleOHLC(dailyData, currentTimeframe);
             validateBacktest(data, strategyParams, currentTimeframe);
             const indicators = calculateAllIndicators(data, strategyParams);
@@ -233,7 +263,7 @@ function App() {
             try { recordExposure(localStorage, {symbol: loadedSymbol, start: data.dates[0], end: data.dates.at(-1)!, recordedAt: new Date().toISOString(), source: 'exploration'}); } catch { setStorageWarning('Browser exposure history could not be saved. Treat later validation as prior exposure unknown.'); }
             setRun(createRunSnapshot(loadedSymbol, currentTimeframe, data, strategyParams, result, benchmark));
         } catch (err) { setError((err as Error).message); }
-    }, [dailyData, loadedSymbol, stockSymbol, strategyParams, currentTimeframe]);
+    }, [dailyData, loadedSymbol, stockSymbol, strategyParams, currentTimeframe, reserveEvaluation, plan, reservation.error]);
 
     const handleRunOptimization = useCallback(async () => {
         if (!dailyData || loadedSymbol !== stockSymbol.trim().toUpperCase()) {
@@ -255,17 +285,22 @@ function App() {
                 throw new Error("Invalid range specification for Parameter 1.");
             }
 
-            const dataForOptimization = resampleOHLC(dailyData, currentTimeframe);
-            try { recordExposure(localStorage, {symbol: loadedSymbol, start: dataForOptimization.dates[0], end: dataForOptimization.dates.at(-1)!, recordedAt: new Date().toISOString(), source: 'exploration'}); } catch { setStorageWarning('Browser exposure history could not be saved. Treat later validation as prior exposure unknown.'); }
-            const { grid, best } = runOptimization(
-                dataForOptimization, 
-                strategyParams, 
-                optimizationParams.param1, p1Range, 
-                optimizationParams.param2, p2Range, 
-                optimizationParams.metric,
-                currentTimeframe
-            );
-            
+            let result;
+            if (reserveEvaluation) {
+                if (!plan) throw new Error(reservation.error || 'Choose valid validation dates in Market Analysis.');
+                const attempt = optimizeDevelopment(plan, strategyParams, {...optimizationParams, range1: p1Range, range2: p2Range});
+                result = attempt.result;
+                setSearches(s => [...s, attempt.record]);
+                try { recordExposure(localStorage, {symbol: loadedSymbol, start: plan.data.openDates![0], end: plan.developmentEnd, recordedAt: new Date().toISOString(), source: 'development'}); }
+                catch { setStorageWarning('Browser exposure history could not be saved. Treat later validation as prior exposure unknown.'); }
+            } else {
+                const dataForOptimization = resampleOHLC(dailyData, currentTimeframe);
+                try { recordExposure(localStorage, {symbol: loadedSymbol, start: dataForOptimization.dates[0], end: dataForOptimization.dates.at(-1)!, recordedAt: new Date().toISOString(), source: 'exploration'}); }
+                catch { setStorageWarning('Browser exposure history could not be saved. Treat later validation as prior exposure unknown.'); }
+                result = runOptimization(dataForOptimization, strategyParams, optimizationParams.param1, p1Range,
+                    optimizationParams.param2, p2Range, optimizationParams.metric, currentTimeframe);
+            }
+            const { grid, best } = result;
             setOptimizationResult({
                 grid,
                 xs: p1Range,
@@ -280,16 +315,16 @@ function App() {
         } finally {
             setIsLoading(false);
         }
-    }, [dailyData, loadedSymbol, stockSymbol, strategyParams, optimizationParams, currentTimeframe]);
+    }, [dailyData, loadedSymbol, stockSymbol, strategyParams, optimizationParams, currentTimeframe, reserveEvaluation, plan, reservation.error]);
 
     const indicators = useMemo(() => {
-        const data = resampledData || dailyData;
+        const data = resampledData;
         if (!data || validateParameters(strategyParams).length) return null;
         return calculateAllIndicators(data, strategyParams);
-    }, [resampledData, dailyData, strategyParams]);
+    }, [resampledData, strategyParams]);
 
     return (
-        <div className="container mx-auto p-4 sm:p-6 md:p-8 font-sans transition-colors duration-300">
+        <div className="container mx-auto p-4 sm:p-6 md:p-8 font-sans leading-relaxed transition-colors duration-300">
             <header className="text-center mb-8 relative">
                 <h1 className="text-4xl md:text-5xl font-extrabold text-slate-800 dark:text-slate-100 flex items-center justify-center gap-3">
                     <ChartLineIcon /> AI Trading Strategy Analyzer
@@ -314,15 +349,7 @@ function App() {
             )}
             
             <main className="bg-white dark:bg-slate-800 p-6 sm:p-8 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-700">
-                <div className="flex flex-wrap gap-3 mb-6" aria-label="Research mode">
-                  <button type="button" aria-pressed={mode === 'exploration'} onClick={() => setMode('exploration')} className={`px-4 py-2 rounded border ${mode === 'exploration' ? 'bg-blue-600 text-white' : ''}`}>Explore & Backtest</button>
-                  <button type="button" aria-pressed={mode === 'validation'} onClick={() => setMode('validation')} className={`px-4 py-2 rounded border ${mode === 'validation' ? 'bg-blue-600 text-white' : ''}`}>Out-of-Sample Validation</button>
-                </div>
                 {storageWarning && <p role="alert" className="text-amber-700 mb-4">{storageWarning}</p>}
-                {mode === 'validation' && (dailyData && loadedSymbol === stockSymbol.trim().toUpperCase()
-                  ? <HoldoutValidation key={loadedSymbol + dailyData.dates.at(-1)} dailyData={dailyData} symbol={loadedSymbol} initialParams={strategyParams} initialTimeframe={currentTimeframe} />
-                  : <div><h2 className="text-2xl font-bold mb-3">Choose Validation Periods</h2><p>Load market data before setting up a holdout experiment.</p><button className="mt-4 px-4 py-2 bg-blue-600 text-white rounded" onClick={() => {setMode('exploration'); setCurrentStep(AppStep.MarketAnalysis);}}>Load Market Data</button></div>)}
-                {mode === 'exploration' && <>
                 <WorkflowStepper currentStep={currentStep} setStep={setCurrentStep} />
                 <h2 className="text-2xl font-bold text-slate-700 dark:text-slate-200 mb-4">
                     {{
@@ -330,12 +357,16 @@ function App() {
                         [AppStep.StrategySetup]: 'Configure Strategy Parameters',
                         [AppStep.Backtest]: 'Backtest & AI Analysis',
                         [AppStep.Optimization]: 'Strategy Optimization',
+                        [AppStep.Validation]: 'Out-of-Sample Validation',
                     }[currentStep]}
                 </h2>
-                {currentStep !== AppStep.MarketAnalysis && (
+                {currentStep !== AppStep.MarketAnalysis && currentStep !== AppStep.Validation && (
                   <div className="mb-5 text-sm text-slate-600 dark:text-slate-300 space-y-2">
+                    <p><span className="inline-block rounded-full bg-slate-100 dark:bg-slate-700 px-3 py-1 font-semibold">{reserveEvaluation ? 'Development period only' : 'Full history'}</span>{plan && <span className="ml-2">{plan.developmentStart} → {plan.developmentEnd} · Reserved evaluation: {plan.evaluationStart} → {plan.evaluationEnd}</span>}</p>
                     <p>Periods count {currentTimeframe} bars. Signals use any enabled reversal indicator without an opposing reversal signal, or momentum entry; buys must pass the trend filter.</p>
                     {parameterErrors.length > 0 && <ul role="alert" className="text-red-600 list-disc pl-5">{parameterErrors.map(message => <li key={message}>{message}</li>)}</ul>}
+                    {reservation.error && <p role="alert" className="text-amber-700 dark:text-amber-300">{reservation.error} Update the reservation in Market Analysis.</p>}
+                    {warmupError && <p role="alert" className="text-amber-700 dark:text-amber-300">{warmupError}</p>}
                     {historyError && <p role="alert" className="text-amber-700 dark:text-amber-300">{historyError}</p>}
                     {loadedSymbol !== stockSymbol.trim().toUpperCase() && <p role="alert">Load data for the selected symbol before running a backtest.</p>}
                   </div>
@@ -357,7 +388,26 @@ function App() {
                                 <SearchIcon /> {isLoading ? 'Loading...' : 'Load Data'}
                             </button>
                         </form>
-                         <div className="mt-6 border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden h-[600px]">
+                        {dailyData && loadedSymbol === stockSymbol.trim().toUpperCase() && <div className="mt-6 space-y-5">
+                            <p className="text-sm text-slate-600 dark:text-slate-300">Loaded {loadedSymbol}: {dailyData.dates[0]} → {dailyData.dates.at(-1)}. Choose whether to reserve later data before developing your strategy.</p>
+                            <section className="p-4 sm:p-6 rounded-xl border border-slate-200 dark:border-slate-700 space-y-4">
+                                <label className="flex items-center gap-3 font-semibold"><input type="checkbox" checked={reserveEvaluation} onChange={e => setReserveEvaluation(e.target.checked)} />Reserve data for validation <span className="text-sm font-normal text-slate-500">Optional</span></label>
+                                <p className="text-sm">When enabled, Backtest &amp; AI and Optimization use the earlier development period. Step 5 evaluates the reserved period after you lock your strategy.</p>
+                                {reserveEvaluation && <>
+                                    <div className="grid sm:grid-cols-2 gap-4">
+                                        <label className="grid gap-2 text-sm font-medium">Evaluation starts on or after<input aria-label="Evaluation start date" type="date" value={splitDate} onChange={e => setSplitDate(e.target.value)} className="p-2 border rounded-lg dark:bg-slate-900 dark:border-slate-600" /></label>
+                                        <label className="grid gap-2 text-sm font-medium">Development warm-up bars<input aria-label="Development warm-up bars" type="number" min={14} max={2000} value={warmup} onChange={e => setWarmup(+e.target.value)} className="p-2 border rounded-lg dark:bg-slate-900 dark:border-slate-600" /></label>
+                                    </div>
+                                    <p className="text-sm">Timeframe: {currentTimeframe} (change in Strategy Setup). Warm-up bars initialize indicators and are excluded from development performance. Changing dates or timeframe clears current results.</p>
+                                    {reservation.error && <p role="alert" className="text-amber-700 dark:text-amber-300">{reservation.error}</p>}
+                                    {plan && <div className="grid sm:grid-cols-2 gap-4 text-sm"><p><strong className="block">Development period</strong>{plan.developmentStart} → {plan.developmentEnd}<br/>{plan.splitIndex - plan.warmupBars} scoring bars</p><p><strong className="block">Reserved evaluation</strong>{plan.evaluationStart} → {plan.evaluationEnd}<br/>{plan.data.dates.length - plan.splitIndex} scoring bars</p></div>}
+                                    <label className="grid gap-2 text-sm">Have these evaluation dates influenced your earlier research?<select aria-label="Prior evaluation exposure" value={prior} onChange={e => setPrior(e.target.value as LockedHoldout['priorKnowledge'])} className="w-full p-2 border rounded-lg dark:bg-slate-900 dark:border-slate-600"><option value="unknown">Unknown — treat as retrospective research</option><option value="reviewed">Yes — already reviewed or used for strategy selection</option><option value="not-reviewed">No, to my knowledge — not independently verified</option></select></label>
+                                    <p className="text-sm text-slate-500">Today is excluded. Weekly/monthly edge intervals are excluded conservatively. Previously viewed charts or results may already have exposed these dates; reserving them cannot make them unseen.</p>
+                                </>}
+                            </section>
+                            <div className="flex justify-end"><button onClick={() => setCurrentStep(AppStep.StrategySetup)} className="bg-blue-600 text-white font-semibold px-6 py-3 rounded-lg hover:bg-blue-700">Continue to Strategy Setup &rarr;</button></div>
+                        </div>}
+                        {!reserveEvaluation && (<div className="mt-6 border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden h-[600px]">
                             <iframe 
                                 key={`${stockSymbol}-${theme}`}
                                 title={`${stockSymbol} Market Overview Chart`}
@@ -365,16 +415,16 @@ function App() {
                                 className="w-full h-full"
                                 src={`https://s.tradingview.com/widgetembed/?symbol=${stockSymbol.toUpperCase()}&interval=D&theme=${theme}&style=1&hidesidetoolbar=1&symboledit=0`}
                             />
-                        </div>
+                        </div>)}
                     </div>
                 )}
 
                 {/* Step 2: Strategy Setup */}
                 {currentStep === AppStep.StrategySetup && (
                      <div className="animate-fade-in">
-                        <StrategyControls strategyParams={strategyParams} setStrategyParams={setStrategyParams} currentTimeframe={currentTimeframe} setCurrentTimeframe={setCurrentTimeframe} />
+                        <StrategyControls strategyParams={strategyParams} setStrategyParams={setStrategyParams} currentTimeframe={currentTimeframe} setCurrentTimeframe={tf => {setCurrentTimeframe(tf); setWarmup(tf === 'daily' ? 200 : tf === 'weekly' ? 52 : 24);}} />
                         <div className="mt-6 flex justify-end">
-                             <button disabled={setupInvalid || !dailyData} onClick={() => setCurrentStep(AppStep.Backtest)} className="bg-blue-600 text-white font-semibold px-6 py-3 rounded-lg hover:bg-blue-700 transition">
+                             <button disabled={setupInvalid || !dailyData} onClick={() => setCurrentStep(AppStep.Backtest)} className="bg-blue-600 text-white font-semibold px-6 py-3 rounded-lg hover:bg-blue-700 transition disabled:opacity-50 disabled:cursor-not-allowed">
                                 Proceed to Backtest &rarr;
                             </button>
                         </div>
@@ -421,7 +471,7 @@ function App() {
                             </div>
                         ) : (
                             <>
-                                <p className="text-sm text-slate-500">{run!.symbol} · {run!.timeframe} · {run!.startDate} to {run!.endDate}. Entry-ATR stops and targets; stop-first for ambiguous bars. Drawdown uses closing equity. Buy &amp; hold excludes fees and dividends. Results include the warm-up interval.</p>
+                                <p className="text-sm text-slate-500">{run!.symbol} · {run!.timeframe} · {run!.startDate} to {run!.endDate}. Entry-ATR stops and targets; stop-first for ambiguous bars. Drawdown uses closing equity. Buy &amp; hold excludes fees and dividends. {reserveEvaluation ? 'Development performance excludes warm-up bars.' : 'Results include the warm-up interval.'}</p>
                                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-4">
                                     <MetricCard label="Initial Capital" value="$10,000" />
                                     <MetricCard
@@ -457,7 +507,7 @@ function App() {
                                 </div>
 
                                 {indicators && (
-                                    <PriceAndIndicatorCharts stockData={resampledData || dailyData!} indicators={indicators} backtestResult={backtestResult} />
+                                    <PriceAndIndicatorCharts stockData={resampledData!} indicators={indicators} backtestResult={backtestResult} />
                                 )}
 
                                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -469,6 +519,10 @@ function App() {
                                 </div>
                             </>
                         )}
+                        <div className="flex flex-wrap justify-between gap-3 border-t dark:border-slate-700 pt-6">
+                            <button className="px-4 py-2 border rounded-lg" onClick={() => setCurrentStep(AppStep.StrategySetup)}>Back to Strategy Setup</button>
+                            <div className="flex flex-wrap gap-3"><button className="px-4 py-2 border rounded-lg" onClick={() => setCurrentStep(AppStep.Optimization)}>Optimize Strategy (Optional)</button>{reserveEvaluation && <button className="px-4 py-2 bg-blue-600 text-white rounded-lg disabled:opacity-50" disabled={!backtestResult} onClick={() => setCurrentStep(AppStep.Validation)}>Continue to Validation &rarr;</button>}</div>
+                        </div>
                     </div>
                 )}
                 
@@ -476,11 +530,12 @@ function App() {
                 {currentStep === AppStep.Optimization && (
                     <div className="animate-fade-in">
                         <div className="flex justify-between items-center mb-4">
-                             <button onClick={handleRunOptimization} disabled={isLoading} className="flex items-center justify-center gap-2 bg-purple-600 text-white font-semibold px-6 py-3 rounded-lg hover:bg-purple-700 transition disabled:bg-slate-400">
+                             <button onClick={handleRunOptimization} disabled={isLoading || !dailyData || setupInvalid || loadedSymbol !== stockSymbol.trim().toUpperCase()} className="flex items-center justify-center gap-2 bg-purple-600 text-white font-semibold px-6 py-3 rounded-lg hover:bg-purple-700 transition disabled:bg-slate-400">
                                 <CogsIcon /> {isLoading ? 'Optimizing...' : 'Run Optimization'}
                             </button>
                         </div>
-                        <p className="mb-4 text-sm text-slate-500">Optimization ranks historical in-sample results, not future performance. Enable the corresponding feature in Strategy Setup before optimizing its parameters. Candidates need at least five completed trades. Validate selected settings on unseen data.</p>
+                        <p className="mb-4 text-sm text-slate-500">Optimization is optional. It ranks {reserveEvaluation ? 'development-period' : 'full-history'} results, not future performance. Enable the corresponding feature in Strategy Setup before optimizing its parameters. Candidates need at least five completed trades. {reserveEvaluation ? 'Candidates must fit the fixed warm-up budget. Apply selected parameters, then rerun Backtest before validation.' : 'To reserve later data, enable validation in Market Analysis before developing your strategy.'}</p>
+                        {reserveEvaluation && <p className="mb-4 text-sm text-slate-500">{searches.length} searches recorded · {searches.reduce((n,s)=>n+s.combinations,0)} combinations tried.</p>}
                         {optimizationResult && !optimizationResult.best && <p role="status" className="mb-4 text-amber-700">No eligible strategy found. Check indicator warm-up, parameter ranges, and the five-trade minimum.</p>}
                         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                             <div className="lg:col-span-1 bg-slate-50 dark:bg-slate-700/50 p-4 rounded-lg border dark:border-slate-700 space-y-4">
@@ -551,7 +606,7 @@ function App() {
                                     <div className="bg-slate-50 dark:bg-slate-700/50 p-4 rounded-lg border dark:border-slate-700">
                                         <h3 className="font-bold text-slate-600 dark:text-slate-300 mb-2">Best Parameters Found</h3>
                                         <p className="text-sm mb-3">{Object.entries(optimizationResult.best.params).map(([key, value]) => `${key}: ${value}`).join(' · ')}</p>
-                                        <button className="mb-3 px-3 py-2 bg-blue-600 text-white rounded" onClick={() => { setStrategyParams(p => ({ ...p, ...optimizationResult.best!.params })); setCurrentStep(AppStep.StrategySetup); }}>Apply parameters to setup</button>
+                                        <button className="mb-3 px-3 py-2 bg-blue-600 text-white rounded" onClick={() => { setStrategyParams(p => ({ ...p, ...optimizationResult.best!.params })); setCurrentStep(AppStep.StrategySetup); }}>Apply Parameters & Review Setup</button>
                                         <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-center">
                                             <MetricCard label="Best Score" value={optimizationResult.best.score.toFixed(3)} colorClass="text-purple-600 dark:text-purple-400" />
                                             <MetricCard label="Sharpe" value={optimizationResult.best.bt.metrics.sharpeRatio.toFixed(3)} />
@@ -570,9 +625,24 @@ function App() {
                                 </div>
                             </div>
                         </div>
+                        <div className="mt-6 flex flex-wrap justify-between gap-3 border-t dark:border-slate-700 pt-6">
+                            <button className="px-4 py-2 border rounded-lg" onClick={() => setCurrentStep(AppStep.Backtest)}>Back to Backtest</button>
+                            {reserveEvaluation && <button className="px-4 py-2 bg-blue-600 text-white rounded-lg" onClick={() => setCurrentStep(AppStep.Validation)}>Continue to Validation &rarr;</button>}
+                        </div>
                     </div>
                 )}
-                </>}
+                <div hidden={currentStep !== AppStep.Validation}>
+                    {plan && loadedSymbol === stockSymbol.trim().toUpperCase() ? <HoldoutValidation
+                        key={JSON.stringify([experimentVersion, loadedSymbol, currentTimeframe, splitDate, warmup, prior, strategyParams, searches.length])}
+                        symbol={loadedSymbol} plan={plan} params={strategyParams} development={runIsCurrent ? run : null} searches={searches} prior={prior} historyWarning={storageWarning}
+                        onBacktest={() => setCurrentStep(AppStep.Backtest)}
+                        onRestart={() => {setExperimentVersion(v => v + 1); setCurrentStep(AppStep.MarketAnalysis);}}
+                    /> : <section className="space-y-4 leading-relaxed">
+                        <p>Reserve an evaluation period in Market Analysis, then develop your strategy in the existing Backtest and Optimization tabs. Return here to lock the strategy and run validation.</p>
+                        <p className="text-sm text-slate-500">If you already reviewed full-history results, those dates are not a fresh unseen test. Prior-exposure warnings will remain part of the evaluation.</p>
+                        <button className="px-6 py-3 bg-blue-600 text-white rounded-lg" onClick={() => setCurrentStep(AppStep.MarketAnalysis)}>Set Up Validation in Market Analysis</button>
+                    </section>}
+                </div>
             </main>
         </div>
     );

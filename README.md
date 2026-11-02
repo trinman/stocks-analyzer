@@ -50,23 +50,33 @@ Do not promote until the preview passes and production function variables are co
 
 ## Chronological holdout validation
 
-Choose **Out-of-Sample Validation** after loading market data. This separate workflow uses
-this app's existing long-only strategy and execution engine, not a replacement MA strategy.
+Validation is integrated into the existing five-tab workflow. The existing strategy controls,
+backtest cards/charts/AI, and optimization grid are shared; there is no second setup form.
 
-1. Select the indicator timeframe, evaluation start, fixed development warm-up budget,
-   and whether the evaluation dates influenced prior research. The suggested split is
-   60%/40% of the loaded calendar range, not a statistical sufficiency guarantee.
-2. Confirm periods. Run development backtests or parameter searches. Only the development
-   slice is passed into optimization. Every eligible candidate uses the same scoring dates;
-   candidates exceeding the fixed warm-up budget are skipped. Five completed trades remains
-   an optimization eligibility rule, not proof of reliability. Searches and their objectives,
-   ranges, trial counts, and selected parameters are retained in the experiment.
-3. Lock and review the parameters, then explicitly evaluate the reserved period. Each
-   period starts independently with $10,000 cash; warm-up bars create no positions/returns.
-   The preceding completed bar may generate a signal filled at the first scoring open.
-4. Compare metrics, equity and matching-date buy-and-hold. Export JSON for full locked
-   metadata, trades, equity, and assumptions, or CSV for the comparison. Optional AI analysis
-   receives evaluation evidence plus the development summary; it is never requested automatically.
+1. **Market Analysis:** load data, optionally enable **Reserve data for validation**, and set
+   the split, fixed development warm-up budget, and prior-exposure declaration. The suggested
+   split is 60%/40% of the loaded calendar range, not a sufficiency guarantee. Loading stays on
+   this screen so the reservation can be chosen before continuing. The live overview chart
+   is hidden while reservation is enabled; earlier chart viewing cannot be undone.
+2. **Strategy Setup:** configure parameters and timeframe as before. Changing timeframe resets
+   the default warm-up budget and recalculates the split; dates/bars are shown in the summary.
+3. **Backtest & AI:** run the current setup. With reservation enabled, only development data
+   is used for metrics, charts, signals, and AI. Warm-up initializes indicators but is excluded
+   from performance. Continue straight to Validation or optionally optimize first.
+4. **Optimization (optional):** search development data only when reserved, using fixed scoring
+   dates. Candidates exceeding the warm-up budget are skipped. Five trades is an eligibility
+   rule, not proof of reliability. Searches, objectives, ranges, and trial counts are retained.
+   Apply the chosen parameters to Strategy Setup and rerun Backtest before locking them.
+5. **Validation:** review the current strategy, lock it, then explicitly **Run Validation**.
+   Each period starts independently with $10,000 cash. The preceding completed bar may generate
+   a signal filled at the first scoring open. Compare results/benchmarks and export JSON/CSV.
+   Optional AI review receives evaluation evidence plus development summary, only on request.
+
+Without reservation, the existing full-history backtest and optimization remain available and
+are labeled **Full history**. Invalid reservation settings block runs instead of falling back
+to full history. Changing parameters, periods, data, or starting a new experiment invalidates
+the current lock/results; tab navigation alone preserves them. Saved evaluations and exposure
+records persist locally. Revisiting the same dates is not a fresh unseen test.
 
 ### Boundaries and limitations
 

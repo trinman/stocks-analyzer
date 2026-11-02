@@ -33,7 +33,7 @@ function summary(run: RunSnapshot) {
 function EquityChart({ run, title }: {run: RunSnapshot; title: string}) {
   return <section className={panel}><h3 className="font-bold">{title}</h3><p className="text-sm">{run.startDate} to {run.endDate} · {run.bars} scoring bars · Starts in cash with $10,000</p>
     <div className="h-64"><ResponsiveContainer width="100%" height="100%"><LineChart data={run.result.equity.map((equity, i) => ({date: run.result.equityDates[i], Strategy: equity, 'Buy & hold': run.benchmark.equity[i]}))}>
-      <CartesianGrid strokeDasharray="3 3"/><XAxis dataKey="date" minTickGap={60}/><YAxis width={75}/><Tooltip formatter={(v: number) => display(v)}/><Legend/>
+      <CartesianGrid strokeDasharray="3 3"/><XAxis dataKey="date" minTickGap={60}/><YAxis width={75}/><Tooltip formatter={v => typeof v === 'number' ? display(v) : String(v ?? 'N/A')}/><Legend/>
       <Line dataKey="Strategy" stroke="#2563eb" dot={false} isAnimationActive={false}/><Line dataKey="Buy & hold" stroke="#94a3b8" dot={false} isAnimationActive={false}/>
     </LineChart></ResponsiveContainer></div></section>;
 }

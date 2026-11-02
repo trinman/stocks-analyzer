@@ -12,6 +12,7 @@ export const methodology = {
 };
 
 export interface RunSnapshot {
+  validation?: { experimentId: string; dataFingerprint: string; lockedAt: string; splitDate: string; priorKnowledge: string; reuse: string; development: { startDate: string; endDate: string; metrics: BacktestResult["metrics"]; benchmark: number }; warnings: string[]; searchCombinations: number };
   id: string;
   symbol: string;
   timeframe: Timeframe;
@@ -35,5 +36,5 @@ export function runMatches(run: RunSnapshot | null, symbol: string, timeframe: T
 export function analysisContext(run: RunSnapshot) {
   const { signals: _signals, ...result } = run.result;
   return { symbol: run.symbol, timeframe: run.timeframe, startDate: run.startDate, endDate: run.endDate, bars: run.bars,
-    params: run.params, result, benchmark: { ret: run.benchmark.ret, cagr: run.benchmark.cagr }, methodology };
+    params: run.params, result, benchmark: { ret: run.benchmark.ret, cagr: run.benchmark.cagr }, methodology: run.methodology, ...(run.validation ? { validation: run.validation } : {}) };
 }

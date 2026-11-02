@@ -37,3 +37,12 @@ test('market endpoint rejects invalid symbols and missing configuration',async()
   assert.equal((await marketData(new Request('https://test.netlify.app/?symbol=bad%20symbol'))).status,400);
   assert.equal((await marketData(new Request('https://test.netlify.app/?symbol=AAPL'))).status,503);
 });
+
+test('validation analysis forwards frozen development/evaluation context with holdout instructions',async()=>{
+  (globalThis as any).Netlify={env:{get:()=> 'test'}};
+  const c=context();
+  const payload={...c,validation:{experimentId:'test',reuse:'previously-recorded',priorKnowledge:'reviewed',development:{metrics:c.result.metrics},warnings:['Retrospective']}};
+  const original=globalThis.fetch;let sent:any;
+  globalThis.fetch=async(_url,init)=>{sent=JSON.parse(init!.body as string);return new Response(stream(sse));};
+  try{const res=await analysis(request({context:payload,messages:[{role:'user',content:'Compare the periods'}]}));assert.equal(res.status,200);assert.match(sent.instructions,/never certify unseen/);assert.match(sent.input[0].content,/previously-recorded/);await res.body?.cancel();}finally{globalThis.fetch=original;}
+});

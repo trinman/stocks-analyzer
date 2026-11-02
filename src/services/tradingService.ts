@@ -228,33 +228,44 @@ export const runBacktest = (
   data: StockData,
   ind: Indicators,
   p: StrategyParameters,
-  timeframe: Timeframe
+  timeframe: Timeframe,
+  scoringStart?: number
 ): BacktestResult => {
   validateBacktest(data, p, timeframe);
   const { dates, o, h, l, c } = data;
   const N = c.length;
+  // A scoped run begins in cash at this bar's open. Earlier bars only warm indicators.
+  const start = scoringStart ?? 1;
+  if (!Number.isInteger(start) || start < 1 || start >= N - 1) {
+    throw new Error('The scoring window requires at least two bars after warm-up.');
+  }
+  if (scoringStart !== undefined && start < requiredBars(p) - 1) {
+    throw new Error('The scoring window starts before indicator warm-up is complete.');
+  }
+  const scoped = scoringStart !== undefined;
+  const startDate = scoped ? (data.openDates?.[start] ?? dates[start]) : dates[0];
   const initialCapital = 10000;
   const slip = p.slipBps / 10000;
 
   let cash = initialCapital;
   let pos: { shares: number; entry: number; entryATR: number; highestPrice: number; trailingStopPrice: number } | null = null;
-  const equity: number[] = [initialCapital];
-  const equityDates: string[] = [dates[0]];
+  const equity: number[] = scoped ? [] : [initialCapital];
+  const equityDates: string[] = scoped ? [] : [dates[0]];
   const trades: Trade[] = [];
   const signals = generateSignals(data, ind, p);
   const buyIdx = new Set(signals.filter(s => s.type === 'buy').map(s => s.index));
   const sellIdx = new Set(signals.filter(s => s.type === 'sell').map(s => s.index));
   let exposureBars = 0;
 
-  const closePosition = (i: number, price: number, reason: string) => {
+  const closePosition = (i: number, price: number, reason: string, atOpen = false) => {
     if (!pos) return;
     const exitPx = Math.max(0, price * (1 - slip));
     cash += pos.shares * exitPx - p.commission;
-    trades.push({ type: 'sell', date: dates[i], price: exitPx, shares: pos.shares, reason });
+    trades.push({ type: 'sell', date: scoped && atOpen ? (data.openDates?.[i] ?? dates[i]) : dates[i], price: exitPx, shares: pos.shares, reason });
     pos = null;
   };
 
-  for (let i = 1; i < N; i++) {
+  for (let i = start; i < N; i++) {
     const openPx = o[i];
     const atrPrev = ind.atr[i - 1];
     let exposed = pos !== null;
@@ -267,7 +278,7 @@ export const runBacktest = (
       pos.trailingStopPrice = Math.max(pos.trailingStopPrice, basis - p.trailingATRMultiplier * atrPrev);
     }
     if (pos && sellIdx.has(i - 1)) {
-      closePosition(i, openPx, 'Reversal Sell Signal');
+      closePosition(i, openPx, 'Reversal Sell Signal', true);
       exited = true;
     }
 
@@ -285,7 +296,7 @@ export const runBacktest = (
         cash -= shares * entryPx + p.commission;
         pos = { shares, entry: entryPx, entryATR: atrPrev, highestPrice: entryPx,
           trailingStopPrice: entryPx - p.trailingATRMultiplier * atrPrev };
-        trades.push({ type: 'buy', date: dates[i], price: entryPx, shares, reason: 'Signal Entry' });
+        trades.push({ type: 'buy', date: scoped ? (data.openDates?.[i] ?? dates[i]) : dates[i], price: entryPx, shares, reason: 'Signal Entry' });
         exposed = true;
       }
     }
@@ -297,8 +308,8 @@ export const runBacktest = (
       const stop = p.useTrailingStop ? Math.max(hardStop, pos.trailingStopPrice) : hardStop;
       const reason = p.useTrailingStop && pos.trailingStopPrice > hardStop ? 'Trailing Stop' : 'Stop Loss';
       const target = pos.entry + p.takeProfitATR * pos.entryATR;
-      if (openPx <= stop) closePosition(i, openPx, reason);
-      else if (p.useTakeProfit && openPx >= target) closePosition(i, openPx, 'Take Profit');
+      if (openPx <= stop) closePosition(i, openPx, reason, true);
+      else if (p.useTakeProfit && openPx >= target) closePosition(i, openPx, 'Take Profit', true);
       else if (l[i] <= stop) closePosition(i, stop, reason);
       else if (p.useTakeProfit && h[i] >= target) closePosition(i, target, 'Take Profit');
     }
@@ -309,10 +320,15 @@ export const runBacktest = (
   }
   let peak = initialCapital;
   let maxDD = 0;
-  for (const eq of equity) {
-    peak = Math.max(peak, eq);
+  let peakDate = startDate;
+  let maxDrawdownDurationDays = 0;
+  let underwater = false;
+  equity.forEach((eq, i) => {
+    if (underwater || eq < peak) maxDrawdownDurationDays = Math.max(maxDrawdownDurationDays, (Date.parse(equityDates[i]) - Date.parse(peakDate)) / 86400000);
+    underwater = eq < peak;
+    if (eq >= peak) { peak = eq; peakDate = equityDates[i]; }
     maxDD = Math.max(maxDD, (peak - eq) / peak * 100);
-  }
+  });
 
   const finalEquity = cash;
 
@@ -340,11 +356,12 @@ export const runBacktest = (
   const grossLoss = Math.abs(losses.reduce((sum, x) => sum + x.pnl, 0));
   const profitFactor = grossLoss > 0 ? grossProfit / grossLoss : (grossProfit > 0 ? Infinity : 0);
 
-  const years = (new Date(dates[N - 1]).getTime() - new Date(dates[0]).getTime()) / (365.25 * 24 * 3600 * 1000);
+  const years = (new Date(dates[N - 1]).getTime() - new Date(startDate).getTime()) / (365.25 * 24 * 3600 * 1000);
   const totalReturn = ((finalEquity - initialCapital) / initialCapital) * 100;
   const cagr = years > 0 ? (Math.pow(finalEquity / initialCapital, 1 / years) - 1) * 100 : 0;
 
-  const periodReturns = equity.length > 1 ? equity.slice(1).map((e, i) => (e - equity[i]) / equity[i]) : [];
+  const returnEquity = scoped ? [initialCapital, ...equity] : equity;
+  const periodReturns = returnEquity.slice(1).map((e, i) => (e - returnEquity[i]) / returnEquity[i]);
   const meanReturn = periodReturns.length > 0 ? periodReturns.reduce((a, b) => a + b, 0) / periodReturns.length : 0;
   const stdDev = periodReturns.length > 0
     ? Math.sqrt(periodReturns.map(r => Math.pow(r - meanReturn, 2)).reduce((a, b) => a + b, 0) / periodReturns.length)
@@ -373,7 +390,7 @@ export const runBacktest = (
 
   return {
     trades,
-    signals,
+    signals: scoped ? signals.filter(s => s.index >= start - 1 && s.index < N - 1) : signals,
     equity,
     equityDates,
     metrics: {
@@ -389,7 +406,9 @@ export const runBacktest = (
       calmarRatio,
       cagr,
       numTrades: paired.length,
-      timeInMarketPct: (exposureBars / (N - 1)) * 100,
+      timeInMarketPct: (exposureBars / (N - start)) * 100,
+      maxDrawdownDurationDays,
+      turnoverPct: trades.reduce((sum, t) => sum + t.price * t.shares, 0) / initialCapital * 100,
       maxConsecLosses,
     },
   };
@@ -418,7 +437,8 @@ export const runOptimization = (
   p2Key: string,
   p2Range: number[],
   metric: string,
-  timeframe: Timeframe
+  timeframe: Timeframe,
+  scoringStart?: number
 ) => {
   validateStockData(data);
   const errors = validateParameters(baseParams);
@@ -438,7 +458,7 @@ export const runOptimization = (
 
   const { dates, c } = data;
   if (dates.length > 1 && c.length > 1) {
-    const years = (new Date(dates[dates.length - 1]).getTime() - new Date(dates[0]).getTime()) / (365.25 * 24 * 3600 * 1000);
+    const years = (new Date(dates[dates.length - 1]).getTime() - new Date(scoringStart === undefined ? dates[0] : (data.openDates?.[scoringStart] ?? dates[scoringStart])).getTime()) / (365.25 * 24 * 3600 * 1000);
     const buyHoldReturn = (c[c.length - 1] - c[0]) / c[0];
     const benchmarkCagr = years > 0 ? (Math.pow(1 + buyHoldReturn, 1 / years) - 1) * 100 : 0;
 
@@ -453,9 +473,9 @@ export const runOptimization = (
         if (mappedP1Key) (currentParams as any)[mappedP1Key] = p1Range[j];
         if (mappedP2Key && p2Key !== 'select') (currentParams as any)[mappedP2Key] = effectiveP2Range[i];
 
-        if (validateParameters(currentParams).length || data.dates.length < requiredBars(currentParams)) continue;
+        if (validateParameters(currentParams).length || data.dates.length < requiredBars(currentParams) || (scoringStart !== undefined && requiredBars(currentParams) - 1 > scoringStart)) continue;
         const indicators = calculateAllIndicators(data, currentParams);
-        const bt = runBacktest(data, indicators, currentParams, timeframe);
+        const bt = runBacktest(data, indicators, currentParams, timeframe, scoringStart);
 
         let score: number;
         switch (metric) {

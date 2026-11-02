@@ -47,3 +47,54 @@ Netlify Functions enforce per-IP/domain limits (market data: 20 requests/minute;
 6. Verify deployed assets contain no API credentials; confirm both functions deployed and provider errors are sanitized.
 
 Do not promote until the preview passes and production function variables are configured. If a released change needs reversal, revert the commit and deploy that correction.
+
+## Chronological holdout validation
+
+Choose **Out-of-Sample Validation** after loading market data. This separate workflow uses
+this app's existing long-only strategy and execution engine, not a replacement MA strategy.
+
+1. Select the indicator timeframe, evaluation start, fixed development warm-up budget,
+   and whether the evaluation dates influenced prior research. The suggested split is
+   60%/40% of the loaded calendar range, not a statistical sufficiency guarantee.
+2. Confirm periods. Run development backtests or parameter searches. Only the development
+   slice is passed into optimization. Every eligible candidate uses the same scoring dates;
+   candidates exceeding the fixed warm-up budget are skipped. Five completed trades remains
+   an optimization eligibility rule, not proof of reliability. Searches and their objectives,
+   ranges, trial counts, and selected parameters are retained in the experiment.
+3. Lock and review the parameters, then explicitly evaluate the reserved period. Each
+   period starts independently with $10,000 cash; warm-up bars create no positions/returns.
+   The preceding completed bar may generate a signal filled at the first scoring open.
+4. Compare metrics, equity and matching-date buy-and-hold. Export JSON for full locked
+   metadata, trades, equity, and assumptions, or CSV for the comparison. Optional AI analysis
+   receives evaluation evidence plus the development summary; it is never requested automatically.
+
+### Boundaries and limitations
+
+- All periods count selected-timeframe bars. Today is excluded. Without an exchange calendar,
+  the first and last weekly/monthly aggregates are conservatively excluded, even if complete.
+  The requested split aligns forward to the next available interval opening. The actual
+  dates are displayed before confirmation. No aggregate crosses the actual split.
+- Open fills in validation use the first session of an interval. Intrabar stop/target dates
+  use the last session because OHLC data cannot establish their actual intrabar timing.
+  Equity and risk metrics remain sampled at the selected bar frequency, not daily for all modes.
+- Both strategy and benchmark begin at the scoring window's first open. The benchmark uses
+  fractional price-only buy-and-hold without fees or dividends. Strategy costs are included.
+  Corporate-action adjustment is not independently verified. End-of-window liquidation costs
+  are included. Turnover is gross traded notional divided by starting capital.
+- Sparse-trade warnings use 20 completed trades as a caution threshold, not an acceptance test.
+  Undefined ratios display N/A. Drawdown duration includes ongoing unrecovered drawdowns.
+- Browser storage records exposures before evaluation and also records full-history exploration
+  and development. Overlap checks ignore parameter, timeframe, and data-fingerprint changes.
+  Existing research before this feature, other devices, cleared storage, and manual tampering
+  cannot be detected. “First recorded here” never means certified unseen data. Default prior
+  knowledge is unknown/retrospective. Storage errors are visible and exports remain available.
+- The application downloads the full price history to the browser. Hiding evaluation results is
+  a research-workflow safeguard, not a server-enforced data embargo. Records are local to the
+  site origin/browser, including separate records for preview and production.
+- Walk-forward portfolios, short selling, FRED, and daily valuation of weekly/monthly strategies
+  are not part of this release. Changing an experiment starts a new setup; revealed dates stay
+  in local exposure history. No automatic pass/fail claim is made from Sharpe or WFE thresholds.
+
+Run `npm test` and `npm run build`. Holdout tests cover future-price perturbations,
+fixed scoring windows, cash starts, cost reconciliation, warm-up, aggregation boundaries,
+locked snapshots, benchmark alignment, local history/reuse, and mocked AI requests.

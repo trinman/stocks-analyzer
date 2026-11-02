@@ -2,6 +2,9 @@ import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react'
 import { AppStep, Benchmark, OptimizationResult, StockData, StrategyParameters, Timeframe, Signal } from './types.ts';
 import { calculateAllIndicators, runBacktest, runOptimization } from './services/tradingService.ts';
 import { fetchDailyData, resampleOHLC } from './services/apiServices.ts';
+import { StrategyControls } from './components/StrategyControls.tsx';
+import { HoldoutValidation } from './components/HoldoutValidation.tsx';
+import { recordExposure } from './services/validationHistory.ts';
 import { AnalysisChat } from './components/AnalysisChat.tsx';
 import { validateParameters, validateBacktest, requiredBars } from './services/validation.ts';
 import { createRunSnapshot, runMatches, type RunSnapshot } from './services/runSnapshot.ts';
@@ -62,24 +65,6 @@ const MetricCard: React.FC<{ label: string; value: string | number; colorClass?:
         <div className={`text-2xl font-bold ${colorClass}`}>{value}</div>
     </div>
 );
-
-const TimeframeSelector: React.FC<{ selected: Timeframe, onSelect: (tf: Timeframe) => void }> = ({ selected, onSelect }) => {
-    const timeframes: Timeframe[] = ['daily', 'weekly', 'monthly'];
-    return (
-        <div className="flex items-center gap-2 bg-slate-100 dark:bg-slate-900/50 p-1 rounded-lg">
-            {timeframes.map(tf => (
-                <button
-                    key={tf}
-                    onClick={() => onSelect(tf)}
-                    className={`px-4 py-1.5 rounded-md text-sm font-semibold transition-colors capitalize
-                        ${selected === tf ? 'bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-300 shadow-sm' : 'bg-transparent text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700/60'}`}
-                >
-                    {tf}
-                </button>
-            ))}
-        </div>
-    );
-};
 
 const SignalList: React.FC<{ signals: Signal[] }> = ({ signals }) => {
     const [showAll, setShowAll] = useState(false);
@@ -153,6 +138,8 @@ const SignalList: React.FC<{ signals: Signal[] }> = ({ signals }) => {
 // --- Main App Component ---
 
 function App() {
+    const [mode, setMode] = useState<'exploration' | 'validation'>('exploration');
+    const [storageWarning, setStorageWarning] = useState('');
     const [currentStep, setCurrentStep] = useState<AppStep>(AppStep.MarketAnalysis);
     const [stockSymbol, setStockSymbol] = useState<string>('AAPL');
     const [isLoading, setIsLoading] = useState<boolean>(false);
@@ -243,6 +230,7 @@ function App() {
             const years = (Date.parse(data.dates[data.dates.length - 1]) - Date.parse(data.dates[0])) / (365.25 * 24 * 3600 * 1000);
             const ret = data.c[data.c.length - 1] / data.c[0] - 1;
             const benchmark: Benchmark = { equity: data.c.map(price => 10000 * price / data.c[0]), ret: ret * 100, cagr: years > 0 ? (Math.pow(1 + ret, 1 / years) - 1) * 100 : 0 };
+            try { recordExposure(localStorage, {symbol: loadedSymbol, start: data.dates[0], end: data.dates.at(-1)!, recordedAt: new Date().toISOString(), source: 'exploration'}); } catch { setStorageWarning('Browser exposure history could not be saved. Treat later validation as prior exposure unknown.'); }
             setRun(createRunSnapshot(loadedSymbol, currentTimeframe, data, strategyParams, result, benchmark));
         } catch (err) { setError((err as Error).message); }
     }, [dailyData, loadedSymbol, stockSymbol, strategyParams, currentTimeframe]);
@@ -268,6 +256,7 @@ function App() {
             }
 
             const dataForOptimization = resampleOHLC(dailyData, currentTimeframe);
+            try { recordExposure(localStorage, {symbol: loadedSymbol, start: dataForOptimization.dates[0], end: dataForOptimization.dates.at(-1)!, recordedAt: new Date().toISOString(), source: 'exploration'}); } catch { setStorageWarning('Browser exposure history could not be saved. Treat later validation as prior exposure unknown.'); }
             const { grid, best } = runOptimization(
                 dataForOptimization, 
                 strategyParams, 
@@ -325,6 +314,15 @@ function App() {
             )}
             
             <main className="bg-white dark:bg-slate-800 p-6 sm:p-8 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-700">
+                <div className="flex flex-wrap gap-3 mb-6" aria-label="Research mode">
+                  <button type="button" aria-pressed={mode === 'exploration'} onClick={() => setMode('exploration')} className={`px-4 py-2 rounded border ${mode === 'exploration' ? 'bg-blue-600 text-white' : ''}`}>Explore & Backtest</button>
+                  <button type="button" aria-pressed={mode === 'validation'} onClick={() => setMode('validation')} className={`px-4 py-2 rounded border ${mode === 'validation' ? 'bg-blue-600 text-white' : ''}`}>Out-of-Sample Validation</button>
+                </div>
+                {storageWarning && <p role="alert" className="text-amber-700 mb-4">{storageWarning}</p>}
+                {mode === 'validation' && (dailyData && loadedSymbol === stockSymbol.trim().toUpperCase()
+                  ? <HoldoutValidation key={loadedSymbol + dailyData.dates.at(-1)} dailyData={dailyData} symbol={loadedSymbol} initialParams={strategyParams} initialTimeframe={currentTimeframe} />
+                  : <div><h2 className="text-2xl font-bold mb-3">Choose Validation Periods</h2><p>Load market data before setting up a holdout experiment.</p><button className="mt-4 px-4 py-2 bg-blue-600 text-white rounded" onClick={() => {setMode('exploration'); setCurrentStep(AppStep.MarketAnalysis);}}>Load Market Data</button></div>)}
+                {mode === 'exploration' && <>
                 <WorkflowStepper currentStep={currentStep} setStep={setCurrentStep} />
                 <h2 className="text-2xl font-bold text-slate-700 dark:text-slate-200 mb-4">
                     {{
@@ -374,70 +372,7 @@ function App() {
                 {/* Step 2: Strategy Setup */}
                 {currentStep === AppStep.StrategySetup && (
                      <div className="animate-fade-in">
-                        <div className="mb-4"><TimeframeSelector selected={currentTimeframe} onSelect={setCurrentTimeframe} /></div>
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
-                            {/* Parameter sections here */}
-                            <div className="bg-slate-50 dark:bg-slate-700/50 p-4 rounded-lg border dark:border-slate-700">
-                               <h3 className="font-bold mb-2 text-slate-600 dark:text-slate-300">Bollinger Bands</h3>
-                               <label className="flex items-center gap-2 text-slate-700 dark:text-slate-300"><input type="checkbox" checked={strategyParams.useBB} onChange={e => setStrategyParams(p => ({...p, useBB: e.target.checked}))} className="dark:bg-slate-900 dark:border-slate-600" /> Use BB</label>
-                               <label className="block mt-2 text-sm text-slate-600 dark:text-slate-400">Period: <input className="w-full p-1 border rounded dark:bg-slate-800 dark:border-slate-600 dark:text-slate-200" type="number" value={strategyParams.bbPeriod} onChange={e => setStrategyParams(p => ({...p, bbPeriod: +e.target.value}))} /></label>
-                               <label className="block mt-2 text-sm text-slate-600 dark:text-slate-400">Std Dev: <input className="w-full p-1 border rounded dark:bg-slate-800 dark:border-slate-600 dark:text-slate-200" type="number" step="0.1" value={strategyParams.bbStd} onChange={e => setStrategyParams(p => ({...p, bbStd: +e.target.value}))} /></label>
-                           </div>
-                           <div className="bg-slate-50 dark:bg-slate-700/50 p-4 rounded-lg border dark:border-slate-700">
-                               <h3 className="font-bold mb-2 text-slate-600 dark:text-slate-300">RSI</h3>
-                               <label className="flex items-center gap-2 text-slate-700 dark:text-slate-300"><input type="checkbox" checked={strategyParams.useRSI} onChange={e => setStrategyParams(p => ({...p, useRSI: e.target.checked}))} className="dark:bg-slate-900 dark:border-slate-600" /> Use RSI</label>
-                               <label className="block mt-2 text-sm text-slate-600 dark:text-slate-400">Period: <input className="w-full p-1 border rounded dark:bg-slate-800 dark:border-slate-600 dark:text-slate-200" type="number" value={strategyParams.rsiPeriod} onChange={e => setStrategyParams(p => ({...p, rsiPeriod: +e.target.value}))} /></label>
-                               <label className="block mt-2 text-sm text-slate-600 dark:text-slate-400">Overbought: <input className="w-full p-1 border rounded dark:bg-slate-800 dark:border-slate-600 dark:text-slate-200" type="number" value={strategyParams.rsiOverbought} onChange={e => setStrategyParams(p => ({...p, rsiOverbought: +e.target.value}))} /></label>
-                               <label className="block mt-2 text-sm text-slate-600 dark:text-slate-400">Oversold: <input className="w-full p-1 border rounded dark:bg-slate-800 dark:border-slate-600 dark:text-slate-200" type="number" value={strategyParams.rsiOversold} onChange={e => setStrategyParams(p => ({...p, rsiOversold: +e.target.value}))} /></label>
-                           </div>
-                           <div className="bg-slate-50 dark:bg-slate-700/50 p-4 rounded-lg border dark:border-slate-700">
-                               <h3 className="font-bold mb-2 text-slate-600 dark:text-slate-300">MACD</h3>
-                               <label className="flex items-center gap-2 text-slate-700 dark:text-slate-300"><input type="checkbox" checked={strategyParams.useMACD} onChange={e => setStrategyParams(p => ({...p, useMACD: e.target.checked}))} className="dark:bg-slate-900 dark:border-slate-600" /> Use MACD</label>
-                               <label className="block mt-2 text-sm text-slate-600 dark:text-slate-400">Fast: <input className="w-full p-1 border rounded dark:bg-slate-800 dark:border-slate-600 dark:text-slate-200" type="number" value={strategyParams.macdFast} onChange={e => setStrategyParams(p => ({...p, macdFast: +e.target.value}))} /></label>
-                               <label className="block mt-2 text-sm text-slate-600 dark:text-slate-400">Slow: <input className="w-full p-1 border rounded dark:bg-slate-800 dark:border-slate-600 dark:text-slate-200" type="number" value={strategyParams.macdSlow} onChange={e => setStrategyParams(p => ({...p, macdSlow: +e.target.value}))} /></label>
-                               <label className="block mt-2 text-sm text-slate-600 dark:text-slate-400">Signal: <input className="w-full p-1 border rounded dark:bg-slate-800 dark:border-slate-600 dark:text-slate-200" type="number" value={strategyParams.macdSignal} onChange={e => setStrategyParams(p => ({...p, macdSignal: +e.target.value}))} /></label>
-                           </div>
-                           <div className="bg-slate-50 dark:bg-slate-700/50 p-4 rounded-lg border dark:border-slate-700">
-                               <h3 className="font-bold mb-2 text-slate-600 dark:text-slate-300">Risk Management</h3>
-                               <label className="block mt-2 text-sm text-slate-600 dark:text-slate-400">Risk/Trade (%): <input className="w-full p-1 border rounded dark:bg-slate-800 dark:border-slate-600 dark:text-slate-200" type="number" step="0.1" value={strategyParams.riskPct} onChange={e => setStrategyParams(p => ({...p, riskPct: +e.target.value}))} /></label>
-                               <label className="block mt-2 text-sm text-slate-600 dark:text-slate-400">Stop Loss (ATR×): <input className="w-full p-1 border rounded dark:bg-slate-800 dark:border-slate-600 dark:text-slate-200" type="number" step="0.1" value={strategyParams.stopATR} onChange={e => setStrategyParams(p => ({...p, stopATR: +e.target.value}))} /></label>
-                               <label className="block mt-2 text-sm text-slate-600 dark:text-slate-400">Slippage (bps): <input className="w-full p-1 border rounded dark:bg-slate-800 dark:border-slate-600 dark:text-slate-200" type="number" value={strategyParams.slipBps} onChange={e => setStrategyParams(p => ({...p, slipBps: +e.target.value}))} /></label>
-                               <label className="block mt-2 text-sm text-slate-600 dark:text-slate-400">Commission ($): <input className="w-full p-1 border rounded dark:bg-slate-800 dark:border-slate-600 dark:text-slate-200" type="number" step="0.1" value={strategyParams.commission} onChange={e => setStrategyParams(p => ({...p, commission: +e.target.value}))} /></label>
-                               <label className="flex items-center gap-2 mt-3 text-slate-700 dark:text-slate-300"><input type="checkbox" checked={strategyParams.allowFractionalShares} onChange={e => setStrategyParams(p => ({...p, allowFractionalShares: e.target.checked}))} className="dark:bg-slate-900 dark:border-slate-600" /> Allow Fractional Shares</label>
-                               
-                               <div className="mt-3 pt-3 border-t dark:border-slate-600">
-                                   <label className="flex items-center gap-2 text-slate-700 dark:text-slate-300">
-                                       <input type="checkbox" checked={strategyParams.useTrailingStop} onChange={e => setStrategyParams(p => ({...p, useTrailingStop: e.target.checked}))} className="dark:bg-slate-900 dark:border-slate-600" /> 
-                                       Use Trailing Stop
-                                   </label>
-                                   {strategyParams.useTrailingStop && (
-                                       <div className="pl-4 mt-2 space-y-2">
-                                           <label className="block text-sm text-slate-600 dark:text-slate-400">Trail Multiplier (ATR×):
-                                               <input className="w-full p-1 border rounded dark:bg-slate-800 dark:border-slate-600 dark:text-slate-200" type="number" step="0.1" value={strategyParams.trailingATRMultiplier} onChange={e => setStrategyParams(p => ({...p, trailingATRMultiplier: +e.target.value}))} />
-                                           </label>
-                                           <label className="block text-sm text-slate-600 dark:text-slate-400">Activation Mode:
-                                               <select className="w-full p-1 border rounded dark:bg-slate-800 dark:border-slate-600 dark:text-slate-200" value={strategyParams.trailingStopActivation || 'ratchet'} onChange={e => setStrategyParams(p => ({...p, trailingStopActivation: e.target.value as 'ratchet' | 'immediate'}))}>
-                                                   <option value="ratchet">High-water mark (never loosens)</option>
-                                                   <option value="immediate">Close-based (never loosens)</option>
-                                               </select>
-                                           </label>
-                                       </div>
-                                   )}
-                               </div>
-                           </div>
-                            <div className="bg-slate-50 dark:bg-slate-700/50 p-4 rounded-lg border dark:border-slate-700">
-                               <h3 className="font-bold mb-2 text-slate-600 dark:text-slate-300">Filters & Exits</h3>
-                               <label className="flex items-center gap-2 text-slate-700 dark:text-slate-300"><input type="checkbox" checked={strategyParams.useTrendFilter} onChange={e => setStrategyParams(p => ({...p, useTrendFilter: e.target.checked}))} className="dark:bg-slate-900 dark:border-slate-600" /> Use Trend Filter</label>
-                               <label className="block mt-2 text-sm text-slate-600 dark:text-slate-400">Trend SMA Period: <input className="w-full p-1 border rounded dark:bg-slate-800 dark:border-slate-600 dark:text-slate-200" type="number" value={strategyParams.trendFilterPeriod} onChange={e => setStrategyParams(p => ({...p, trendFilterPeriod: +e.target.value}))} /></label>
-                               
-                               <label className="flex items-center gap-2 mt-4 text-slate-700 dark:text-slate-300"><input type="checkbox" checked={strategyParams.useTakeProfit} onChange={e => setStrategyParams(p => ({...p, useTakeProfit: e.target.checked}))} className="dark:bg-slate-900 dark:border-slate-600"/> Use Take Profit</label>
-                               <label className="block mt-2 text-sm text-slate-600 dark:text-slate-400">Take Profit (ATR×): <input className="w-full p-1 border rounded dark:bg-slate-800 dark:border-slate-600 dark:text-slate-200" type="number" step="0.1" value={strategyParams.takeProfitATR} onChange={e => setStrategyParams(p => ({...p, takeProfitATR: +e.target.value}))} /></label>
-
-                               <label className="flex items-center gap-2 mt-4 text-slate-700 dark:text-slate-300"><input type="checkbox" checked={strategyParams.useMomentumEntry} onChange={e => setStrategyParams(p => ({...p, useMomentumEntry: e.target.checked}))} className="dark:bg-slate-900 dark:border-slate-600"/> Use Momentum Entry</label>
-                               <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">Momentum entry requires price above its SMA and RSI above 50, using the RSI period configured above. This RSI condition applies even when Use RSI is unchecked.</p>
-                               <label className="block mt-2 text-sm text-slate-600 dark:text-slate-400">Momentum SMA Period: <input className="w-full p-1 border rounded dark:bg-slate-800 dark:border-slate-600 dark:text-slate-200" type="number" value={strategyParams.momentumSMAPeriod} onChange={e => setStrategyParams(p => ({...p, momentumSMAPeriod: +e.target.value}))} /></label>
-                           </div>
-                        </div>
+                        <StrategyControls strategyParams={strategyParams} setStrategyParams={setStrategyParams} currentTimeframe={currentTimeframe} setCurrentTimeframe={setCurrentTimeframe} />
                         <div className="mt-6 flex justify-end">
                              <button disabled={setupInvalid || !dailyData} onClick={() => setCurrentStep(AppStep.Backtest)} className="bg-blue-600 text-white font-semibold px-6 py-3 rounded-lg hover:bg-blue-700 transition">
                                 Proceed to Backtest &rarr;
@@ -637,6 +572,7 @@ function App() {
                         </div>
                     </div>
                 )}
+                </>}
             </main>
         </div>
     );

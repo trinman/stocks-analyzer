@@ -366,7 +366,7 @@ function App() {
                     <p>Periods count {currentTimeframe} bars. Signals use any enabled reversal indicator without an opposing reversal signal, or momentum entry; buys must pass the trend filter.</p>
                     {parameterErrors.length > 0 && <ul role="alert" className="text-red-600 list-disc pl-5">{parameterErrors.map(message => <li key={message}>{message}</li>)}</ul>}
                     {reservation.error && <p role="alert" className="text-amber-700 dark:text-amber-300">{reservation.error} Update the reservation in Market Analysis.</p>}
-                    {warmupError && <p role="alert" className="text-amber-700 dark:text-amber-300">{warmupError}</p>}
+                    {warmupError && !historyError && <p role="alert" className="text-amber-700 dark:text-amber-300">{warmupError}</p>}
                     {historyError && <p role="alert" className="text-amber-700 dark:text-amber-300">{historyError}</p>}
                     {loadedSymbol !== stockSymbol.trim().toUpperCase() && <p role="alert">Load data for the selected symbol before running a backtest.</p>}
                   </div>
@@ -463,10 +463,10 @@ function App() {
                         {!backtestResult || !benchmarkResult ? (
                             <div className="bg-slate-50 dark:bg-slate-800/50 p-8 rounded-xl border border-slate-200 dark:border-slate-700 text-center">
                                 <div className="max-w-2xl mx-auto">
-                                    <h3 className="text-lg font-semibold text-slate-700 dark:text-slate-200">Ready to test your setup</h3>
-                                    <p className="mt-2 text-slate-500 dark:text-slate-400">
+                                    <h3 className="text-lg font-semibold text-slate-700 dark:text-slate-200">{setupInvalid ? 'Review your setup' : 'Ready to test your setup'}</h3>
+                                    {setupInvalid ? <p className="mt-2 text-slate-500 dark:text-slate-400">Resolve the setup messages above before running a backtest.</p> : <p className="mt-2 text-slate-500 dark:text-slate-400">
                                         Your selected timeframe is <span className="font-semibold capitalize">{currentTimeframe}</span>. Click <span className="font-semibold">Run Backtest</span> to generate performance metrics, charts, trading signals, and the AI review (available on request).
-                                    </p>
+                                    </p>}
                                 </div>
                             </div>
                         ) : (

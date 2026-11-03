@@ -2,6 +2,8 @@
 
 React/Vite single-stock strategy research app with deterministic backtesting and OpenAI commentary.
 
+See the [Data Dictionary and Methodology Guide](docs/data-dictionary.md) for field definitions, timeframe and execution rules, metric formulas, validation terminology, export contents, and known discrepancies.
+
 ## Development and verification
 
 Use Node 22.14 or later. Install with `npm ci`, then run `npm test` and `npm run build` (includes TypeScript checks).

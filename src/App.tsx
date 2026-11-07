@@ -342,14 +342,14 @@ function App() {
             </header>
 
             {error && (
-                <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-lg relative mb-6" role="alert">
+                <div className="bg-red-100 dark:bg-red-500/10 border border-red-400 dark:border-red-500/40 text-red-700 dark:text-red-300 px-4 py-3 rounded-lg relative mb-6" role="alert">
                     <strong className="font-bold">Error: </strong>
                     <span className="block sm:inline">{error}</span>
                 </div>
             )}
             
             <main className="[&_p]:leading-relaxed [&_li]:leading-relaxed bg-white dark:bg-slate-800 p-6 sm:p-8 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-700">
-                {storageWarning && <p role="alert" className="text-amber-700 mb-4">{storageWarning}</p>}
+                {storageWarning && <p role="alert" className="text-amber-700 dark:text-amber-300 mb-4">{storageWarning}</p>}
                 <WorkflowStepper currentStep={currentStep} setStep={setCurrentStep} />
                 <h2 className="text-2xl font-bold text-slate-700 dark:text-slate-200 mb-4">
                     {{
@@ -364,7 +364,7 @@ function App() {
                   <div className="mb-5 text-sm text-slate-600 dark:text-slate-300 space-y-2">
                     <p><span className="inline-block rounded-full bg-slate-100 dark:bg-slate-700 px-3 py-1 font-semibold">{reserveEvaluation ? 'Development period only' : 'Full history'}</span>{plan && <span className="ml-2">{plan.developmentStart} → {plan.developmentEnd} · Reserved evaluation: {plan.evaluationStart} → {plan.evaluationEnd}</span>}</p>
                     <p>Periods count {currentTimeframe} bars. Signals use any enabled reversal indicator without an opposing reversal signal, or momentum entry; buys must pass the trend filter.</p>
-                    {parameterErrors.length > 0 && <ul role="alert" className="text-red-600 list-disc pl-5">{parameterErrors.map(message => <li key={message}>{message}</li>)}</ul>}
+                    {parameterErrors.length > 0 && <ul role="alert" className="text-red-600 dark:text-red-400 list-disc pl-5">{parameterErrors.map(message => <li key={message}>{message}</li>)}</ul>}
                     {reservation.error && <p role="alert" className="text-amber-700 dark:text-amber-300">{reservation.error} Update the reservation in Market Analysis.</p>}
                     {warmupError && !historyError && <p role="alert" className="text-amber-700 dark:text-amber-300">{warmupError}</p>}
                     {historyError && <p role="alert" className="text-amber-700 dark:text-amber-300">{historyError}</p>}
@@ -391,7 +391,7 @@ function App() {
                         {dailyData && loadedSymbol === stockSymbol.trim().toUpperCase() && <div className="mt-6 space-y-5">
                             <p className="text-sm text-slate-600 dark:text-slate-300">Loaded {loadedSymbol}: {dailyData.dates[0]} → {dailyData.dates.at(-1)}. Choose whether to reserve later data before developing your strategy.</p>
                             <section className="p-4 sm:p-6 rounded-xl border border-slate-200 dark:border-slate-700 space-y-4">
-                                <label className="flex items-center gap-3 font-semibold"><input type="checkbox" checked={reserveEvaluation} onChange={e => setReserveEvaluation(e.target.checked)} />Reserve data for validation <span className="text-sm font-normal text-slate-500">Optional</span></label>
+                                <label className="flex items-center gap-3 font-semibold"><input type="checkbox" checked={reserveEvaluation} onChange={e => setReserveEvaluation(e.target.checked)} />Reserve data for validation <span className="text-sm font-normal text-slate-500 dark:text-slate-400">Optional</span></label>
                                 <p className="text-sm">When enabled, Backtest &amp; AI and Optimization use the earlier development period. Step 5 evaluates the reserved period after you lock your strategy.</p>
                                 {reserveEvaluation && <>
                                     <div className="grid sm:grid-cols-2 gap-4">
@@ -402,7 +402,7 @@ function App() {
                                     {reservation.error && <p role="alert" className="text-amber-700 dark:text-amber-300">{reservation.error}</p>}
                                     {plan && <div className="grid sm:grid-cols-2 gap-4 text-sm"><p><strong className="block">Development period</strong>{plan.developmentStart} → {plan.developmentEnd}<br/>{plan.splitIndex - plan.warmupBars} scoring bars</p><p><strong className="block">Reserved evaluation</strong>{plan.evaluationStart} → {plan.evaluationEnd}<br/>{plan.data.dates.length - plan.splitIndex} scoring bars</p></div>}
                                     <label className="grid gap-2 text-sm">Have these evaluation dates influenced your earlier research?<select aria-label="Prior evaluation exposure" value={prior} onChange={e => setPrior(e.target.value as LockedHoldout['priorKnowledge'])} className="w-full p-2 border rounded-lg dark:bg-slate-900 dark:border-slate-600"><option value="unknown">Unknown — treat as retrospective research</option><option value="reviewed">Yes — already reviewed or used for strategy selection</option><option value="not-reviewed">No, to my knowledge — not independently verified</option></select></label>
-                                    <p className="text-sm text-slate-500">Today is excluded. Weekly/monthly edge intervals are excluded conservatively. Previously viewed charts or results may already have exposed these dates; reserving them cannot make them unseen.</p>
+                                    <p className="text-sm text-slate-500 dark:text-slate-400">Today is excluded. Weekly/monthly edge intervals are excluded conservatively. Previously viewed charts or results may already have exposed these dates; reserving them cannot make them unseen.</p>
                                 </>}
                             </section>
                             <div className="flex justify-end"><button onClick={() => setCurrentStep(AppStep.StrategySetup)} className="bg-blue-600 text-white font-semibold px-6 py-3 rounded-lg hover:bg-blue-700">Continue to Strategy Setup &rarr;</button></div>
@@ -471,7 +471,7 @@ function App() {
                             </div>
                         ) : (
                             <>
-                                <p className="text-sm text-slate-500">{run!.symbol} · {run!.timeframe} · {run!.startDate} to {run!.endDate}. Entry-ATR stops and targets; stop-first for ambiguous bars. Drawdown uses closing equity. Buy &amp; hold excludes fees and dividends. {reserveEvaluation ? 'Development performance excludes warm-up bars.' : 'Results include the warm-up interval.'}</p>
+                                <p className="text-sm text-slate-500 dark:text-slate-400">{run!.symbol} · {run!.timeframe} · {run!.startDate} to {run!.endDate}. Entry-ATR stops and targets; stop-first for ambiguous bars. Drawdown uses closing equity. Buy &amp; hold excludes fees and dividends. {reserveEvaluation ? 'Development performance excludes warm-up bars.' : 'Results include the warm-up interval.'}</p>
                                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-4">
                                     <MetricCard label="Initial Capital" value="$10,000" />
                                     <MetricCard
@@ -511,7 +511,7 @@ function App() {
                                 )}
 
                                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                                    <div><p className="mb-2 text-sm text-slate-500">Signal prices are bar closes, not fills. Executed trades appear on the chart and in the trade export.</p><SignalList signals={backtestResult.signals} /></div>
+                                    <div><p className="mb-2 text-sm text-slate-500 dark:text-slate-400">Signal prices are bar closes, not fills. Executed trades appear on the chart and in the trade export.</p><SignalList signals={backtestResult.signals} /></div>
                                     <div className="bg-slate-50 dark:bg-slate-800/50 p-4 sm:p-6 rounded-xl border border-slate-200 dark:border-slate-700">
                                         <h3 className="text-xl font-bold text-slate-700 dark:text-slate-200 mb-4 flex items-center gap-3"><BrainCircuitIcon /> OpenAI Analysis Chat</h3>
                                         <AnalysisChat key={run!.id} run={run!} />
@@ -534,9 +534,9 @@ function App() {
                                 <CogsIcon /> {isLoading ? 'Optimizing...' : 'Run Optimization'}
                             </button>
                         </div>
-                        <p className="mb-4 text-sm text-slate-500">Optimization is optional. It ranks {reserveEvaluation ? 'development-period' : 'full-history'} results, not future performance. Enable the corresponding feature in Strategy Setup before optimizing its parameters. Candidates need at least five completed trades. {reserveEvaluation ? 'Candidates must fit the fixed warm-up budget. Apply selected parameters, then rerun Backtest before validation.' : 'To reserve later data, enable validation in Market Analysis before developing your strategy.'}</p>
-                        {reserveEvaluation && <p className="mb-4 text-sm text-slate-500">{searches.length} searches recorded · {searches.reduce((n,s)=>n+s.combinations,0)} combinations tried.</p>}
-                        {optimizationResult && !optimizationResult.best && <p role="status" className="mb-4 text-amber-700">No eligible strategy found. Check indicator warm-up, parameter ranges, and the five-trade minimum.</p>}
+                        <p className="mb-4 text-sm text-slate-500 dark:text-slate-400">Optimization is optional. It ranks {reserveEvaluation ? 'development-period' : 'full-history'} results, not future performance. Enable the corresponding feature in Strategy Setup before optimizing its parameters. Candidates need at least five completed trades. {reserveEvaluation ? 'Candidates must fit the fixed warm-up budget. Apply selected parameters, then rerun Backtest before validation.' : 'To reserve later data, enable validation in Market Analysis before developing your strategy.'}</p>
+                        {reserveEvaluation && <p className="mb-4 text-sm text-slate-500 dark:text-slate-400">{searches.length} searches recorded · {searches.reduce((n,s)=>n+s.combinations,0)} combinations tried.</p>}
+                        {optimizationResult && !optimizationResult.best && <p role="status" className="mb-4 text-amber-700 dark:text-amber-300">No eligible strategy found. Check indicator warm-up, parameter ranges, and the five-trade minimum.</p>}
                         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                             <div className="lg:col-span-1 bg-slate-50 dark:bg-slate-700/50 p-4 rounded-lg border dark:border-slate-700 space-y-4">
                                 <div>
@@ -639,7 +639,7 @@ function App() {
                         onRestart={() => {setExperimentVersion(v => v + 1); setCurrentStep(AppStep.MarketAnalysis);}}
                     /> : <section className="space-y-4 leading-relaxed">
                         <p>Reserve an evaluation period in Market Analysis, then develop your strategy in the existing Backtest and Optimization tabs. Return here to lock the strategy and run validation.</p>
-                        <p className="text-sm text-slate-500">If you already reviewed full-history results, those dates are not a fresh unseen test. Prior-exposure warnings will remain part of the evaluation.</p>
+                        <p className="text-sm text-slate-500 dark:text-slate-400">If you already reviewed full-history results, those dates are not a fresh unseen test. Prior-exposure warnings will remain part of the evaluation.</p>
                         <button className="px-6 py-3 bg-blue-600 text-white rounded-lg" onClick={() => setCurrentStep(AppStep.MarketAnalysis)}>Set Up Validation in Market Analysis</button>
                     </section>}
                 </div>

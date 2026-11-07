@@ -1,0 +1,73 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  /* Match native form controls (checkboxes, selects, date pickers) to the active theme.
+     Without this they stay light while the rest of the interface is dark. */
+  :root {
+    color-scheme: light;
+  }
+
+  .dark {
+    color-scheme: dark;
+  }
+
+  /* Single, consistent keyboard focus ring. Components that opt into a custom
+     ring (for example the symbol input) still override this via utilities. */
+  :focus-visible {
+    outline: 2px solid theme('colors.blue.500');
+    outline-offset: 2px;
+  }
+}
+
+/* Custom scrollbar for a more modern look */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f1f5f9;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #94a3b8;
+  border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #64748b;
+}
+
+/* html carries .dark itself, so style the page scrollbar and nested ones separately */
+.dark::-webkit-scrollbar-track,
+.dark ::-webkit-scrollbar-track {
+  background: #1e293b;
+}
+
+.dark::-webkit-scrollbar-thumb,
+.dark ::-webkit-scrollbar-thumb {
+  background: #475569;
+}
+
+.dark::-webkit-scrollbar-thumb:hover,
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: #64748b;
+}
+
+/* Standard (Firefox) scrollbar colours, inherited by scrolling children */
+html {
+  scrollbar-color: #94a3b8 #f1f5f9;
+}
+
+html.dark {
+  scrollbar-color: #475569 #1e293b;
+}
+
+/* Respect reduced-motion preferences for the step transitions */
+@media (prefers-reduced-motion: reduce) {
+  .animate-fade-in {
+    animation: none;
+  }
+}

@@ -14,7 +14,7 @@ Use Node 22.14 or later. Install with `npm ci`, then run `npm test` and `npm run
 
 Tailwind CSS is compiled at build time (`tailwind.config.js`, `postcss.config.js`) and imported once from `src/index.css` by `src/index.tsx`. The deployed bundle carries its own CSS; no runtime CDN is involved.
 
-- Dark mode is the `dark` class on `<html>` (`darkMode: 'class'`). `index.html` applies the stored theme before first paint; `App.tsx` owns the toggle. Every `dark:` utility follows that class.
+- Dark mode is the default for new visitors, regardless of system preference. A saved light/dark selection takes precedence. The `dark` class on `<html>` (`darkMode: 'class'`) controls styling; `index.html` applies the choice before first paint and `App.tsx` owns the toggle. Browser theme color follows the selection, and blocked storage falls back to dark mode.
 - Chart text and chrome cannot use utility classes. `src/theme.ts` exposes `useDarkMode()`, `chartColors(dark)` and `chartFont()` for Recharts props and the canvas heatmap. Use them instead of new hardcoded hex values so both themes stay legible.
 - Cross-cutting styles live in `src/index.css`: scrollbars, `color-scheme`, the keyboard focus ring, and the `animate-fade-in` step transition.
 - Layout and formatting are inline utility classes. The surfaces that matter are `src/App.tsx` (shell, stepper, metric cards, step panels), `src/components/StrategyControls.tsx`, `src/components/Charts.tsx`, `src/components/HoldoutValidation.tsx`, `src/components/AnalysisChat.tsx`, and `src/components/Icons.tsx`.

@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="dark">
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
@@ -8,17 +8,17 @@
       name="description"
       content="Backtest, optimize, and validate single-stock trading strategies with a deterministic simulation and optional AI review."
     />
-    <meta name="theme-color" content="#f1f5f9" media="(prefers-color-scheme: light)" />
-    <meta name="theme-color" content="#0f172a" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#0f172a" />
     <title>AI Trading Strategy Analyzer</title>
     <script>
       // Apply the stored theme before first paint so dark mode does not flash.
       try {
         const stored = localStorage.getItem('theme');
-        const dark = stored ? stored === 'dark' : window.matchMedia('(prefers-color-scheme: dark)').matches;
+        const dark = stored !== 'light';
         document.documentElement.classList.toggle('dark', dark);
+        document.querySelector('meta[name="theme-color"]').setAttribute('content', dark ? '#0f172a' : '#f1f5f9');
       } catch {
-        /* localStorage can be blocked; fall back to the light theme. */
+        /* Keep the default dark theme when storage is unavailable. */
       }
     </script>
   </head>

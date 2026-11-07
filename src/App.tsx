@@ -191,12 +191,11 @@ function App() {
     useEffect(() => { setError(null); }, [currentStep]);
 
     const [theme, setTheme] = useState<Theme>(() => {
-        if (typeof window !== 'undefined' && window.localStorage) {
-            const storedTheme = window.localStorage.getItem('theme') as Theme | null;
-            if (storedTheme) return storedTheme;
-            return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        try {
+            return window.localStorage.getItem('theme') === 'light' ? 'light' : 'dark';
+        } catch {
+            return 'dark';
         }
-        return 'light';
     });
 
     useEffect(() => {
@@ -206,7 +205,8 @@ function App() {
         } else {
             root.classList.remove('dark');
         }
-        localStorage.setItem('theme', theme);
+        document.querySelector('meta[name="theme-color"]')?.setAttribute('content', theme === 'dark' ? '#0f172a' : '#f1f5f9');
+        try { localStorage.setItem('theme', theme); } catch { /* Theme still works without storage. */ }
     }, [theme]);
 
     const toggleTheme = () => {

@@ -10,6 +10,17 @@ Use Node 22.14 or later. Install with `npm ci`, then run `npm test` and `npm run
 
 `npm run dev` starts the frontend. For the complete app, use the Netlify CLI's `netlify dev` so the same-site functions are available. Keep secrets in Netlify or an ignored local environment file. Never use `VITE_` variables for provider credentials.
 
+## UI styling
+
+Tailwind CSS is compiled at build time (`tailwind.config.js`, `postcss.config.js`) and imported once from `src/index.css` by `src/index.tsx`. The deployed bundle carries its own CSS; no runtime CDN is involved.
+
+- Dark mode is the default for new visitors, regardless of system preference. A saved light/dark selection takes precedence. The `dark` class on `<html>` (`darkMode: 'class'`) controls styling; `index.html` applies the choice before first paint and `App.tsx` owns the toggle. Browser theme color follows the selection, and blocked storage falls back to dark mode.
+- Chart text and chrome cannot use utility classes. `src/theme.ts` exposes `useDarkMode()`, `chartColors(dark)` and `chartFont()` for Recharts props and the canvas heatmap. Use them instead of new hardcoded hex values so both themes stay legible.
+- Cross-cutting styles live in `src/index.css`: scrollbars, `color-scheme`, the keyboard focus ring, and the `animate-fade-in` step transition.
+- Layout and formatting are inline utility classes. The surfaces that matter are `src/App.tsx` (shell, stepper, metric cards, step panels), `src/components/StrategyControls.tsx`, `src/components/Charts.tsx`, `src/components/HoldoutValidation.tsx`, `src/components/AnalysisChat.tsx`, and `src/components/Icons.tsx`.
+
+`npm run build` type-checks but cannot show the result, so review style changes in both themes on a Netlify Deploy Preview before promoting them.
+
 ## Netlify configuration
 
 The existing site is `analyzerstocks`, site ID `600de90d-6315-435d-9ec3-b11b0bb39762`.

@@ -7,6 +7,7 @@ import { lockHoldout, evaluateHoldout, evaluationRecord,
 import { readHistory, recordExposure, overlappingExposure, saveValidationRecord, serializeRecord } from '../services/validationHistory.ts';
 import { AnalysisChat } from './AnalysisChat.tsx';
 import { exportToCSV } from '../utils.ts';
+import { chartColors, useDarkMode } from '../theme.ts';
 
 const button = 'px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 font-semibold text-white disabled:opacity-50 disabled:cursor-not-allowed';
 const panel = 'p-4 sm:p-6 border border-slate-200 rounded-xl dark:border-slate-700 space-y-3 leading-relaxed';
@@ -26,9 +27,11 @@ function summary(run: RunSnapshot) {
     'Completed trades': String(m.numTrades), 'Exposure (%)': display(m.timeInMarketPct), 'Turnover (% of starting capital)': display(m.turnoverPct) };
 }
 function EquityChart({ run, title }: {run: RunSnapshot; title: string}) {
+  const c = chartColors(useDarkMode());
+  const tick = { fontSize: 11, fill: c.axis };
   return <section className={panel}><h3 className="font-bold">{title}</h3><p className="text-sm">{run.startDate} to {run.endDate} · {run.bars} scoring bars · Starts in cash with $10,000</p>
     <div className="h-64"><ResponsiveContainer width="100%" height="100%"><LineChart data={run.result.equity.map((equity, i) => ({date: run.result.equityDates[i], Strategy: equity, 'Buy & hold': run.benchmark.equity[i]}))}>
-      <CartesianGrid strokeDasharray="3 3"/><XAxis dataKey="date" minTickGap={60}/><YAxis width={75}/><Tooltip formatter={v => typeof v === 'number' ? display(v) : String(v ?? 'N/A')}/><Legend/>
+      <CartesianGrid strokeDasharray="3 3" stroke={c.grid}/><XAxis dataKey="date" minTickGap={60} tick={tick}/><YAxis width={75} tick={tick}/><Tooltip formatter={v => typeof v === 'number' ? display(v) : String(v ?? 'N/A')} contentStyle={{backgroundColor: c.tooltipBg, color: '#f8fafc', border: c.tooltipBorder, borderRadius: '8px', fontSize: '12px'}} itemStyle={{color: '#e2e8f0'}}/><Legend/>
       <Line dataKey="Strategy" stroke="#2563eb" dot={false} isAnimationActive={false}/><Line dataKey="Buy & hold" stroke="#94a3b8" dot={false} isAnimationActive={false}/>
     </LineChart></ResponsiveContainer></div></section>;
 }
@@ -90,7 +93,7 @@ export function HoldoutValidation({symbol, plan, params, development, searches, 
   return <div className="space-y-6 leading-relaxed text-slate-700 dark:text-slate-200">
     <p>Review the strategy developed in Backtest &amp; AI, lock its settings, then run the reserved evaluation. Optimization is optional.</p>
     <p className="text-sm">{symbol} · Single chronological holdout · Long only · Browser records cannot certify unseen data or track work on other devices.</p>
-    {error && <p role="alert" className="text-red-600">{error}</p>}
+    {error && <p role="alert" className="text-red-600 dark:text-red-400">{error}</p>}
     {storageNote && <p role="alert" className="text-amber-700 dark:text-amber-300">{storageNote}</p>}
     {!locked && <section className={panel}>
       <h3 className="text-xl font-bold">Review Before Validation</h3>

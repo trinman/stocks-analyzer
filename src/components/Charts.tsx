@@ -1,6 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import { Line, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ComposedChart, Area, ReferenceLine, Scatter, Cell } from 'recharts';
 import { BacktestResult, Indicators, StockData, OptimizationResult } from '../types.ts';
+import { chartColors, chartFont, useDarkMode } from '../theme.ts';
 
 interface PriceChartProps {
   stockData: StockData;
@@ -30,13 +31,15 @@ export const PriceAndIndicatorCharts: React.FC<PriceChartProps> = ({ stockData, 
     return dataPoint;
   });
 
+  const c = chartColors(useDarkMode());
+
   return (
 
     <div className="space-y-6">
-      <div className="p-5 bg-white rounded-xl shadow-sm border border-slate-200">
+      <div className="p-5 bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700">
         <div className="flex justify-between items-center mb-6">
-            <h3 className="text-lg font-bold text-slate-800">Price Action & Executed Trades</h3>
-            <div className="flex gap-4 text-sm text-slate-500">
+            <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100">Price Action & Executed Trades</h3>
+            <div className="flex gap-4 text-sm text-slate-500 dark:text-slate-400">
                 <div className="flex items-center gap-1"><span className="w-3 h-3 rounded-full bg-emerald-500"></span> Buy</div>
                 <div className="flex items-center gap-1"><span className="w-3 h-3 rounded-full bg-rose-500"></span> Sell</div>
             </div>
@@ -50,10 +53,10 @@ export const PriceAndIndicatorCharts: React.FC<PriceChartProps> = ({ stockData, 
                     <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
                 </linearGradient>
             </defs>
-            <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+            <CartesianGrid strokeDasharray="3 3" stroke={c.grid} vertical={false} />
             <XAxis 
                 dataKey="date" 
-                tick={{ fontSize: 11, fill: '#64748b' }} 
+                tick={{ fontSize: 11, fill: c.axis }} 
                 tickFormatter={(d) => d.slice(0, 7)} 
                 axisLine={false}
                 tickLine={false}
@@ -62,7 +65,7 @@ export const PriceAndIndicatorCharts: React.FC<PriceChartProps> = ({ stockData, 
             <YAxis 
                 yAxisId="left" 
                 orientation="right" 
-                tick={{ fontSize: 11, fill: '#64748b' }} 
+                tick={{ fontSize: 11, fill: c.axis }} 
                 domain={['dataMin - 5', 'dataMax + 5']} 
                 tickFormatter={(p) => typeof p === 'number' ? `$${p.toFixed(0)}` : p} 
                 axisLine={false}
@@ -77,7 +80,7 @@ export const PriceAndIndicatorCharts: React.FC<PriceChartProps> = ({ stockData, 
                   return null;
               }}
               labelFormatter={(label: React.ReactNode) => new Date(String(label)).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}
-              contentStyle={{ backgroundColor: '#1e293b', color: '#f8fafc', borderRadius: '8px', border: 'none', fontSize: '12px', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)' }}
+              contentStyle={{ backgroundColor: c.tooltipBg, color: '#f8fafc', borderRadius: '8px', border: c.tooltipBorder, fontSize: '12px', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)' }}
               itemStyle={{ color: '#e2e8f0' }}
             />
             <Legend wrapperStyle={{fontSize: "12px", paddingTop: "10px"}} iconType="circle" />
@@ -88,36 +91,39 @@ export const PriceAndIndicatorCharts: React.FC<PriceChartProps> = ({ stockData, 
             <Line type="monotone" dataKey="lowerBB" name="Lower BB" yAxisId="left" stroke="#94a3b8" dot={false} strokeWidth={1} strokeDasharray="4 4" opacity={0.5} />
 
             <Scatter yAxisId="left" name="Buy" dataKey="buy" fill="#10b981" shape={(props: any) => {
-                const { cx, cy } = props;
+                const { cx, cy, payload } = props;
+                // Scatter renders a symbol for every row; skip rows with no fill price.
+                if (payload?.buy == null) return <g />;
                 return <path d={`M${cx},${cy+6}L${cx-5},${cy-4}L${cx+5},${cy-4}Z`} fill="#10b981" stroke="none" />
             }} legendType="triangle" />
             <Scatter yAxisId="left" name="Sell" dataKey="sell" fill="#f43f5e" shape={(props: any) => {
-                const { cx, cy } = props;
+                const { cx, cy, payload } = props;
+                if (payload?.sell == null) return <g />;
                 return <path d={`M${cx},${cy-6}L${cx-5},${cy+4}L${cx+5},${cy+4}Z`} fill="#f43f5e" stroke="none" />
             }} legendType="diamond" />
           </ComposedChart>
         </ResponsiveContainer>
       </div>
 
-      <div className="p-5 bg-white rounded-xl shadow-sm border border-slate-200">
-        <h3 className="text-lg font-bold text-slate-800 mb-6">Market Momentum (MACD & RSI)</h3>
+      <div className="p-5 bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700">
+        <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100 mb-6">Market Momentum (MACD & RSI)</h3>
         <ResponsiveContainer width="100%" height={300}>
           <ComposedChart data={chartData} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+            <CartesianGrid strokeDasharray="3 3" stroke={c.grid} vertical={false} />
             <XAxis 
                 dataKey="date" 
-                tick={{ fontSize: 11, fill: '#64748b' }} 
+                tick={{ fontSize: 11, fill: c.axis }} 
                 tickFormatter={(d) => d.slice(0, 7)} 
                 axisLine={false}
                 tickLine={false}
                 minTickGap={40}
             />
-            <YAxis yAxisId="left" orientation="right" tick={{ fontSize: 11, fill: '#64748b' }} axisLine={false} tickLine={false} />
-            <YAxis yAxisId="right" orientation="left" tick={{ fontSize: 11, fill: '#64748b' }} domain={[0, 100]} axisLine={false} tickLine={false} />
+            <YAxis yAxisId="left" orientation="right" tick={{ fontSize: 11, fill: c.axis }} axisLine={false} tickLine={false} />
+            <YAxis yAxisId="right" orientation="left" tick={{ fontSize: 11, fill: c.axis }} domain={[0, 100]} axisLine={false} tickLine={false} />
             <Tooltip
               formatter={(value) => typeof value === 'number' ? value.toFixed(2) : value}
               labelFormatter={(label: React.ReactNode) => new Date(String(label)).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}
-              contentStyle={{ backgroundColor: '#1e293b', color: '#f8fafc', borderRadius: '8px', border: 'none', fontSize: '12px' }}
+              contentStyle={{ backgroundColor: c.tooltipBg, color: '#f8fafc', borderRadius: '8px', border: c.tooltipBorder, fontSize: '12px' }}
               itemStyle={{ color: '#e2e8f0' }}
             />
             <Legend wrapperStyle={{fontSize: "12px", paddingTop: "10px"}} iconType="circle" />
@@ -163,6 +169,8 @@ const prettyParamLabel = (key: string) => {
 
 export const HeatmapChart: React.FC<HeatmapProps> = ({ optimizationResult }) => {
     const canvasRef = useRef<HTMLCanvasElement>(null);
+    const dark = useDarkMode();
+    const c = chartColors(dark);
 
     useEffect(() => {
         if (!canvasRef.current || !optimizationResult) return;
@@ -210,7 +218,7 @@ export const HeatmapChart: React.FC<HeatmapProps> = ({ optimizationResult }) => 
             }
         }
         
-        ctx.strokeStyle = '#cbd5e1';
+        ctx.strokeStyle = c.axisLine;
         ctx.lineWidth = 1;
         ctx.beginPath();
         ctx.moveTo(m.left, H - m.bottom);
@@ -221,8 +229,8 @@ export const HeatmapChart: React.FC<HeatmapProps> = ({ optimizationResult }) => 
         ctx.lineTo(m.left, H - m.bottom);
         ctx.stroke();
 
-        ctx.fillStyle = '#64748b';
-        ctx.font = '500 11px Inter, sans-serif';
+        ctx.fillStyle = c.axis;
+        ctx.font = chartFont(11);
         ctx.textAlign = 'center';
         ctx.textBaseline = 'top';
         const xMaxTicks = 10;
@@ -243,9 +251,9 @@ export const HeatmapChart: React.FC<HeatmapProps> = ({ optimizationResult }) => 
             }
         }
 
-        ctx.fillStyle = '#334155';
+        ctx.fillStyle = c.label;
         ctx.textAlign = 'center';
-        ctx.font = '600 13px Inter, sans-serif';
+        ctx.font = chartFont(13, 600);
         ctx.fillText(prettyParamLabel(param1), m.left + plotW / 2, H - 55);
 
         if (param2 !== 'select' && ys.length > 0) {
@@ -257,16 +265,16 @@ export const HeatmapChart: React.FC<HeatmapProps> = ({ optimizationResult }) => 
             ctx.restore();
         }
 
-    }, [optimizationResult]);
+    }, [optimizationResult, dark]);
 
     return (
-        <div className="w-full h-full relative bg-white rounded-xl">
+        <div className="w-full h-full relative bg-white dark:bg-slate-800 rounded-xl">
             <canvas ref={canvasRef} className="w-full h-full"></canvas>
-            <div className="absolute bottom-0 left-1/2 -translate-x-1/2 transform flex justify-center py-2 gap-4 bg-white/80 backdrop-blur-sm rounded-full px-4 mb-2 border border-slate-100">
-                <span className="text-[10px] text-slate-500 font-medium uppercase tracking-wider">Performance</span>
-                <div className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-blue-500"></div><span className="text-[10px] text-slate-600">Low</span></div>
-                <div className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-purple-500"></div><span className="text-[10px] text-slate-600">Med</span></div>
-                <div className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-emerald-500"></div><span className="text-[10px] text-slate-600">High</span></div>
+            <div className="absolute bottom-0 left-1/2 -translate-x-1/2 transform flex justify-center py-2 gap-4 bg-white/80 dark:bg-slate-800/90 backdrop-blur-sm rounded-full px-4 mb-2 border border-slate-100 dark:border-slate-700">
+                <span className="text-[10px] text-slate-500 dark:text-slate-400 font-medium uppercase tracking-wider">Performance</span>
+                <div className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-blue-500"></div><span className="text-[10px] text-slate-600 dark:text-slate-300">Low</span></div>
+                <div className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-purple-500"></div><span className="text-[10px] text-slate-600 dark:text-slate-300">Med</span></div>
+                <div className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-emerald-500"></div><span className="text-[10px] text-slate-600 dark:text-slate-300">High</span></div>
             </div>
         </div>
     );

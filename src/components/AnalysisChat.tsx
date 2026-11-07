@@ -36,7 +36,7 @@ export function AnalysisChat({ run }: { run: RunSnapshot }) {
       </div>}
       {messages.map((m, i) => <div key={i} className={`p-3 rounded whitespace-pre-wrap break-words ${m.role === 'user' ? 'bg-blue-600 text-white' : 'bg-slate-100 dark:bg-slate-700 dark:text-slate-100'}`}><strong>{m.role === 'user' ? 'You' : 'Analysis'}</strong><p>{m.content}</p></div>)}
       {loading && <div className="whitespace-pre-wrap break-words text-slate-700 dark:text-slate-200" role="status">{draft || 'Analyzing…'}</div>}
-      {error && <p role="alert" className="text-red-600">{error} Your completed conversation is preserved.</p>}
+      {error && <p role="alert" className="text-red-600 dark:text-red-400">{error} Your completed conversation is preserved.</p>}
     </div>
     <form className="p-3 border-t flex gap-2" onSubmit={e => { e.preventDefault(); void send(input); }}>
       <input aria-label="Chat input" maxLength={2000} value={input} onChange={e => setInput(e.target.value)} disabled={loading || !messages.length} placeholder="Ask a follow-up question…" className="min-w-0 flex-1 p-2 border rounded dark:bg-slate-800 dark:text-white" />
